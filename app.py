@@ -268,4 +268,5 @@ elif st.session_state['registered'] and df is None:
 # 5. FOOTER
 # ==========================================
 st.markdown("---")
-st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยา สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
+st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
