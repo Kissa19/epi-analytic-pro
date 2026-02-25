@@ -228,20 +228,61 @@ elif st.session_state['registered'] and df is not None:
                 st.dataframe(pd.DataFrame(results).style.format({m_label: "{:.2f}", "95% CI Lower": "{:.2f}", "95% CI Upper": "{:.2f}", "Mid-P": "{:.4f}"}))
 
     # 4. Adjusted Analysis
-    elif menu == "🧬 Multiple Logistic Regression (Adjusted)":
-        st.title("🧬 Multiple Logistic Regression (Adjusted)")
-        out_v = st.selectbox("ตัวแปรตาม", df.columns, key="log_out")
-        exp_v = st.selectbox("ปัจจัยหลัก", [c for c in df.columns if c != out_v], key="log_exp")
-        adj_v = st.multiselect("ตัวแปรกวน", [c for c in df.columns if c not in [out_v, exp_v]], key="log_adj")
-        if st.button("🚀 ประมวลผล Logistic"):
+    elif menu == "🧬 Adjusted Analysis (Logistic)":
+        st.title("🧬 Adjusted Analysis (Multiple Logistic Regression)")
+        st.markdown("วิเคราะห์ปัจจัยเสี่ยงโดยควบคุมตัวแปรกวน (แสดงค่า AOR และ 95% CI)")
+        
+        out_v = st.selectbox("ตัวแปรตาม (Outcome)", df.columns, key="log_out")
+        exp_v = st.selectbox("ปัจจัยหลัก (Exposure)", [c for c in df.columns if c != out_v], key="log_exp")
+        adj_v = st.multiselect("ตัวแปรกวน (Covariates)", [c for c in df.columns if c not in [out_v, exp_v]], key="log_adj")
+        
+        if st.button("🚀 ประมวลผล Logistic Regression"):
             try:
-                df_m = df[[out_v, exp_v] + adj_v].copy().dropna()
-                for c in df_m.columns: df_m[c] = smart_map_variable(df_m[c])
-                formula = f"Q('{out_v}') ~ Q('{exp_v}') + " + " + ".join([f"Q('{a}')" for a in adj_v]) if adj_v else f"Q('{out_v}') ~ Q('{exp_v}')"
+                # 1. เตรียมข้อมูลและทำความสะอาด (จัดการรหัส 1/2 เป็น 1/0)
+                cols_needed = [out_v, exp_v] + adj_v
+                df_m = df[cols_needed].copy().dropna()
+                for col in df_m.columns:
+                    df_m[col] = smart_map_variable(df_m[col])
+                
+                # 2. สร้างสูตรการคำนวณ
+                formula = f"Q('{out_v}') ~ Q('{exp_v}')"
+                if adj_v:
+                    formula += " + " + " + ".join([f"Q('{a}')" for a in adj_v])
+                
+                # 3. รัน Model
                 model = smf.logit(formula, data=df_m).fit(disp=0)
-                res_df = pd.DataFrame({"Factors": model.params.index, "AOR": np.exp(model.params.values), "P-value": model.pvalues.values})
-                st.dataframe(res_df[res_df['Factors'] != 'Intercept'].style.format({"AOR": "{:.2f}", "P-value": "{:.4f}"}))
-            except Exception as e: st.error(f"Error: {e}")
+                
+                # 4. คำนวณค่า AOR และ 95% CI
+                # ใช้ np.exp เพื่อแปลงค่า Coefficient (Log odds) เป็น Odds Ratio
+                conf_int = model.conf_int() # ได้ค่า CI ในรูปแบบ Log odds
+                
+                res_df = pd.DataFrame({
+                    "Factors": model.params.index,
+                    "Adjusted OR (AOR)": np.exp(model.params.values),
+                    "95% CI Lower": np.exp(conf_int[0].values),
+                    "95% CI Upper": np.exp(conf_int[1].values),
+                    "P-value": model.pvalues.values
+                })
+                
+                # ลบ Intercept และล้างชื่อตัวแปรให้สวยงาม
+                res_df = res_df[res_df['Factors'] != 'Intercept']
+                res_df['Factors'] = res_df['Factors'].str.extract(r"Q\('(.*)'\)")[0].fillna(res_df['Factors'])
+                
+                # 5. แสดงผลตาราง
+                st.subheader("📋 ตารางสรุปผลการวิเคราะห์")
+                st.dataframe(res_df.style.format({
+                    "Adjusted OR (AOR)": "{:.2f}",
+                    "95% CI Lower": "{:.2f}",
+                    "95% CI Upper": "{:.2f}",
+                    "P-value": "{:.4f}"
+                }).apply(lambda x: ['background-color: #e8f5e9' if x['P-value'] < 0.05 else '' for _ in x], axis=1), 
+                use_container_width=True)
+                
+                st.success("✅ คำนวณค่า Adjusted OR และ 95% CI สำเร็จ")
+                
+            except Exception as e:
+                st.error(f"⚠️ ไม่สามารถประมวลผลได้: {e}")
+                st.info("คำแนะนำ: ตรวจสอบว่าตัวแปรอิสระมีจำนวนผู้ป่วย (Case) เพียงพอในแต่ละกลุ่มหรือไม่")
 
     # 5. Spot Map
     elif menu == "🗺️ Spot Map (Place)":
@@ -270,4 +311,5 @@ elif st.session_state['registered'] and df is None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
