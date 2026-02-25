@@ -269,7 +269,7 @@ elif st.session_state['registered'] and df is not None:
                 res_df['Factors'] = res_df['Factors'].str.extract(r"Q\('(.*)'\)")[0].fillna(res_df['Factors'])
                 
                 # 5. แสดงผลตาราง
-                st.subheader("📋 ตารางสรุปผลการวิเคราะห์")
+                st.subheader("📋 สรุปผลการวิเคราะห์ปัจจัยเสี่ยงโดยควบคุมตัวแปรกวน")
                 st.dataframe(res_df.style.format({
                     "Adjusted OR (AOR)": "{:.2f}",
                     "95% CI Lower": "{:.2f}",
@@ -311,6 +311,7 @@ elif st.session_state['registered'] and df is None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
