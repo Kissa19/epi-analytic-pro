@@ -1,0 +1,10 @@
+streamlit
+pandas
+numpy
+statsmodels
+scipy
+plotly
+st-gsheets-connection
+folium
+streamlit-folium
+openpyxl
