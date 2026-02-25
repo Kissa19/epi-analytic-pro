@@ -228,8 +228,8 @@ elif st.session_state['registered'] and df is not None:
                 st.dataframe(pd.DataFrame(results).style.format({m_label: "{:.2f}", "95% CI Lower": "{:.2f}", "95% CI Upper": "{:.2f}", "Mid-P": "{:.4f}"}))
 
     # 4. Adjusted Analysis
-    elif menu == "🧬 Adjusted Analysis (Logistic)":
-        st.title("🧬 Adjusted Analysis (Multiple Logistic Regression)")
+    elif menu == "🧬 Multiple Logistic Regression (Adjusted)":
+        st.title("🧬 Multiple Logistic Regression (Adjusted)")
         st.markdown("วิเคราะห์ปัจจัยเสี่ยงโดยควบคุมตัวแปรกวน (แสดงค่า AOR และ 95% CI)")
         
         out_v = st.selectbox("ตัวแปรตาม (Outcome)", df.columns, key="log_out")
@@ -311,5 +311,6 @@ elif st.session_state['registered'] and df is None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
