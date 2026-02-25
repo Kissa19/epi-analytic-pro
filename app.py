@@ -40,11 +40,11 @@ if not st.session_state['registered']:
 else:
     menu = st.sidebar.radio(
         "เลือกหัวข้อการวิเคราะห์", 
-        ["👤 พรรณนา (Descriptive)", 
-         "📊 สร้าง Epi Curve (Time)", 
+        ["👤 บุคคล (Person)", 
+         "📊 Epidemic Curve (Time)", 
          "🗺️ Spot Map (Place)",
-         "🔬 Crude Analysis (OR/RR)", 
-         "🧬 Adjusted Analysis (Logistic)",
+         "🔬 Bivariate Analysis (OR/RR)", 
+         "🧬 Multiple Logistic Regression (Adjusted)",
          "📝 ข้อมูลการลงทะเบียน (แก้ไข)"]
     )
 
@@ -111,9 +111,9 @@ if st.session_state['registered']:
 if menu == "📝 ลงทะเบียนใช้งาน" or menu == "📝 ข้อมูลการลงทะเบียน (แก้ไข)":
     st.title("📝 ระบบลงทะเบียนใช้งาน")
     with st.form("registration_form"):
-        u_name = st.text_input("ชื่อ-นามสกุล", value="" if not st.session_state['registered'] else "ผู้ใช้งานเดิม")
-        u_agency = st.text_input("หน่วยงาน / ทีม SRRT-CDCU")
-        u_purpose = st.selectbox("วัตถุประสงค์", ["สอบสวนโรคหน้างาน", "วิจัย/วิชาการ", "ซ้อมแผนฯ"])
+        u_name = st.text_input("ประเภททีม เช่น SRRT/CDCU/JIT/SAT/อื่นๆ ระบุ...", value="" if not st.session_state['registered'] else "ผู้ใช้งานเดิม")
+        u_agency = st.text_input("หน่วยงาน")
+        u_purpose = st.selectbox("วัตถุประสงค์การใช้งาน", ["สอบสวนโรคหน้างาน", "วิจัย/วิชาการ", "วิเคราะห์ข้อมูล"])
         if st.form_submit_button("บันทึกข้อมูลและเริ่มใช้งาน"):
             st.session_state['registered'] = True
             st.balloons()
@@ -124,11 +124,11 @@ elif st.session_state['registered'] and df is not None:
     total_n = len(df)
 
     # 1. พรรณนา (Descriptive)
-    if menu == "👤 พรรณนา (Descriptive)":
-        st.title("👤 ระบาดวิทยาเชิงพรรณนา")
+    if menu == "👤 บุคคล (Person)":
+        st.title("👤 การกระจายตามบุคคล")
         st.info(f"📋 จำนวนข้อมูลทั้งหมด (n) = {total_n} ราย")
         
-        for label, col_key in [("1. เพศ", "sex_s"), ("2. อายุ", "age_s"), ("3. อาชีพ", "occ_s")]:
+        for label, col_key in [("1. เพศ", "sex_s"), ("2. อายุ", "age_s"), ("3. อาชีพ/ชั้นเรียน", "occ_s")]:
             st.subheader(label)
             sel_col = st.selectbox(f"เลือกตัวแปร {label}", df.columns, key=col_key)
             if "อายุ" in label:
@@ -152,7 +152,7 @@ elif st.session_state['registered'] and df is not None:
             s_df = pd.DataFrame(s_data).sort_values("จำนวน (n)", ascending=True)
             fig_s = px.bar(
                 s_df, x="ร้อยละ (%)", y="อาการ", orientation='h', 
-                title="ความถี่ของอาการ (ร้อยละ)",
+                title="ร้อยละอาการและอาการแสดง (ร้อยละ)",
                 text=s_df["ร้อยละ (%)"].apply(lambda x: f'{x:.1f}%'), 
                 color_discrete_sequence=["#3498db"]
             )
@@ -160,14 +160,14 @@ elif st.session_state['registered'] and df is not None:
             fig_s.update_layout(xaxis=dict(range=[0, 110]), xaxis_title="ร้อยละ (%)", yaxis_title="")
             st.plotly_chart(fig_s, use_container_width=True)
 
-        st.subheader("5. ปัจจัยเสี่ยง (Risk Factors)")
-        risk_cols = st.multiselect("เลือกตัวแปรปัจจัยเสี่ยง (1=มีปัจจัย)", [c for c in df.columns if c not in sym_cols])
+        st.subheader("5. ปัจจัย (Factors)")
+        risk_cols = st.multiselect("เลือกตัวแปรปัจจัย (1=มีปัจจัย)", [c for c in df.columns if c not in sym_cols])
         if risk_cols:
             r_data = [{"ปัจจัย": c, "จำนวน (n)": int((df[c]==1).sum()), "ร้อยละ (%)": ((df[c]==1).sum()/total_n*100)} for c in risk_cols]
             st.table(pd.DataFrame(r_data).sort_values("จำนวน (n)", ascending=False).style.format({'ร้อยละ (%)': '{:.2f}'}))
 
     # 2. Epi Curve
-    elif menu == "📊 สร้าง Epi Curve (Time)":
+    elif menu == "📊 Epidemic Curve (Time)":
         st.title("📊 Interactive Epidemic Curve")
         date_col = st.sidebar.selectbox("เลือกวันที่เริ่มป่วย", df.columns)
         col_grp = st.sidebar.selectbox("แยกสีตามกลุ่ม:", ["<none>"] + df.columns.tolist())
@@ -199,8 +199,8 @@ elif st.session_state['registered'] and df is not None:
             st.plotly_chart(fig, use_container_width=True)
 
     # 3. Crude Analysis
-    elif menu == "🔬 Crude Analysis (OR/RR)":
-        st.title("🔬 Crude Analysis (1=Yes, 0=No)")
+    elif menu == "🔬 Bivariate Analysis (OR/RR)":
+        st.title("🔬 Bivariate Analysis (1=Yes, 0=No)")
         out_v = st.selectbox("ตัวแปรตาม (Outcome)", df.columns)
         design = st.radio("ประเภทการศึกษา", ["Case-control Study (OR)", "Cohort Study (RR)"])
         exp_list = st.multiselect("เลือกปัจจัยเสี่ยง", [c for c in df.columns if c != out_v])
@@ -228,8 +228,8 @@ elif st.session_state['registered'] and df is not None:
                 st.dataframe(pd.DataFrame(results).style.format({m_label: "{:.2f}", "95% CI Lower": "{:.2f}", "95% CI Upper": "{:.2f}", "Mid-P": "{:.4f}"}))
 
     # 4. Adjusted Analysis
-    elif menu == "🧬 Adjusted Analysis (Logistic)":
-        st.title("🧬 Adjusted Analysis (Logistic Regression)")
+    elif menu == "🧬 Multiple Logistic Regression (Adjusted)":
+        st.title("🧬 Multiple Logistic Regression (Adjusted)")
         out_v = st.selectbox("ตัวแปรตาม", df.columns, key="log_out")
         exp_v = st.selectbox("ปัจจัยหลัก", [c for c in df.columns if c != out_v], key="log_exp")
         adj_v = st.multiselect("ตัวแปรกวน", [c for c in df.columns if c not in [out_v, exp_v]], key="log_adj")
@@ -270,3 +270,4 @@ elif st.session_state['registered'] and df is None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
