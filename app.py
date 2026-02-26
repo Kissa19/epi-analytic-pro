@@ -363,7 +363,7 @@ elif st.session_state['registered'] and df is not None:
     elif menu == "🗺️ Spot Map (Place)":
         st.title("🗺️ Spot Map - Advanced Visualization")
         
-        # 1. ค้นหาคอลัมน์พิกัดและข้อมูลพื้นฐาน (รองรับทั้งไทยและอังกฤษ)
+        # 1. ค้นหาคอลัมน์อัตโนมัติ
         lat_c = next((c for c in df.columns if c.lower() in ['latitude', 'lat', 'ละติจูด']), None)
         lon_c = next((c for c in df.columns if c.lower() in ['longitude', 'lon', 'ลองจิจูด']), None)
         age_c = next((c for c in df.columns if c.lower() in ['age', 'อายุ']), None)
@@ -371,99 +371,97 @@ elif st.session_state['registered'] and df is not None:
         class_c = next((c for c in df.columns if 'ชั้น' in c or 'class' in c.lower()), None)
         
         if lat_c and lon_c:
-            # เรียงลำดับตามเวลา (ถ้ามี) เพื่อรัน Case No.
-            date_col = next((c for c in df.columns if 'onset' in c.lower() or 'วันที่' in c.lower()), None)
-            if date_col:
-                df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-                df = df.sort_values(by=date_col).reset_index(drop=True)
-            
             df_m = df.dropna(subset=[lat_c, lon_c]).copy()
-
-            # --- [จุดสำคัญ] ส่วนเมนูเลือกใน Sidebar ---
-            st.sidebar.markdown("---")
-            st.sidebar.subheader("⚙️ ตั้งค่าการแสดงผลแผนที่")
             
-            # 1. เลือกรูปแบบแผนที่
+            # --- Sidebar Settings ---
+            st.sidebar.subheader("⚙️ การตั้งค่าแผนที่")
             map_choice = st.sidebar.radio("รูปแบบแผนที่:", ["Google Hybrid (ดาวเทียม)", "Google Roadmap", "OpenStreetMap"])
             
-            # 2. เลือกตัวแปรที่ต้องการแยกสี (Dynamic Options)
+            # ตัวเลือกแยกสี
             color_options = ["<สีแดงทั้งหมด>"]
             if sex_c: color_options.append("แยกตามเพศ")
             if age_c: color_options.append("แยกตามกลุ่มอายุ (<15 vs 15+)")
             if class_c: color_options.append("แยกตามชั้นเรียน")
             
-            # เพิ่มคอลัมน์อื่นๆ ที่เหลือในไฟล์ให้เลือกได้ด้วย
             other_cols = [c for c in df.columns if c not in [lat_c, lon_c, age_c, sex_c, class_c]]
             color_by = st.sidebar.selectbox("เลือกตัวแปรเพื่อแยกสีจุด:", color_options + other_cols)
             
             rad = st.sidebar.selectbox("รัศมีวงรอบ (Buffer):", [0, 100, 200, 500], index=1)
 
-            # --- ฟังก์ชันกำหนดสีแบบฉลาด ---
+            # --- ส่วนจัดการสีและ Legend ---
+            legend_dict = {} # เก็บข้อมูลสีไว้ทำ Legend
+
             def get_marker_color(row, mode):
-                if mode == "<สีแดงทั้งหมด>": return "red"
+                nonlocal legend_dict
+                if mode == "<สีแดงทั้งหมด>":
+                    legend_dict = {"ผู้ป่วยทุกราย": "red"}
+                    return "red"
+                
                 elif mode == "แยกตามเพศ":
                     val = str(row.get(sex_c, '')).strip()
+                    legend_dict = {"ชาย (Male)": "blue", "หญิง (Female)": "deeppink", "ไม่ระบุ": "gray"}
                     return "blue" if 'ชาย' in val or 'M' in val.upper() else "deeppink" if 'หญิง' in val or 'F' in val.upper() else "gray"
+                
                 elif mode == "แยกตามกลุ่มอายุ (<15 vs 15+)":
+                    legend_dict = {"น้อยกว่า 15 ปี": "green", "15 ปีขึ้นไป": "orange", "ไม่ทราบอายุ": "gray"}
                     try:
                         val = float(row.get(age_c, 0))
                         return "green" if val < 15 else "orange"
                     except: return "gray"
+                
                 else:
-                    # กรณีเลือกคอลัมน์อื่นๆ ให้สุ่มสีตามค่าที่ไม่ซ้ำ
+                    # สำหรับตัวแปรอื่นๆ (Dynamic Legend)
                     unique_vals = sorted(df_m[mode].unique().astype(str))
-                    colors = ['red', 'blue', 'green', 'purple', 'orange', 'darkred', 'cadetblue', 'pink']
+                    colors = ['#E6194B', '#3CB44B', '#FFE119', '#4363D8', '#F58231', '#911EB4', '#46F0F0', '#F032E6', '#BCF60C']
                     color_map = {v: colors[i % len(colors)] for i, v in enumerate(unique_vals)}
+                    legend_dict = color_map
                     return color_map.get(str(row.get(mode, '')), "gray")
 
-            # --- การสร้างแผนที่ ---
+            # --- สร้างแผนที่ ---
             tiles_url = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}' if "Hybrid" in map_choice else \
                         'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}' if "Roadmap" in map_choice else 'OpenStreetMap'
             
             m = folium.Map(location=[df_m[lat_c].mean(), df_m[lon_c].mean()], zoom_start=16, tiles=tiles_url, attr='Google')
 
-            # --- วาดจุดข้อมูล ---
+            # วาดจุด (เรียกฟังก์ชันสี)
             for idx, r in df_m.iterrows():
-                case_no = idx + 1
                 dot_color = get_marker_color(r, color_by)
-                
-                # รายละเอียดใน Popup
-                info = f"""
-                <div style='font-family:Tahoma; font-size:12px;'>
-                <b>🏥 ผู้ป่วยรายที่: {case_no}</b><br>
-                <b>เพศ:</b> {r.get(sex_c, 'N/A')} | <b>อายุ:</b> {r.get(age_c, 'N/A')} ปี<br>
-                <b>ชั้นเรียน:</b> {r.get(class_c, 'N/A')}<br>
-                <b>เริ่มป่วย:</b> {r.get(date_col, 'N/A')}<br>
-                <hr>
-                <b>พิกัด:</b> {r[lat_c]}, {r[lon_c]}
-                </div>
-                """
-                
                 folium.CircleMarker(
                     location=[r[lat_c], r[lon_c]],
-                    radius=8,
-                    color=dot_color,
-                    fill=True,
-                    fill_opacity=0.8,
-                    tooltip=f"เคสที่ {case_no} ({r.get(sex_c, '')})",
-                    popup=folium.Popup(info, max_width=250)
+                    radius=8, color=dot_color, fill=True, fill_opacity=0.8,
+                    tooltip=f"เคสที่ {idx+1}",
+                    popup=f"ข้อมูล: {r.get(color_by, 'N/A')}"
                 ).add_to(m)
-
                 if rad > 0:
                     folium.Circle([r[lat_c], r[lon_c]], radius=rad, color='blue', fill=True, fill_opacity=0.05, weight=1).add_to(m)
 
+            # --- แสดงผลแผนที่ ---
             folium_static(m, width=1000, height=600)
+
+            # --- [จุดสำคัญ] แสดง Legend (คำอธิบายสัญลักษณ์) ---
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("📍 คำอธิบายสัญลักษณ์ (Legend)")
             
-            # แสดงสถิติสรุปด้านล่าง
-            st.write(f"📊 **สรุปข้อมูล:** พบตำแหน่งพิกัดทั้งหมด {len(df_m)} ราย")
-        else:
-            st.warning("⚠️ ไม่พบข้อมูลพิกัด (Lat/Lon) กรุณาตรวจสอบชื่อคอลัมน์ในไฟล์ Excel")
+            legend_html = "<div style='background-color: #f9f9f9; padding: 10px; border-radius: 5px; border: 1px solid #ddd;'>"
+            for label, color in legend_dict.items():
+                legend_html += f"""
+                <div style='display: flex; align-items: center; margin-bottom: 5px;'>
+                    <div style='width: 15px; height: 15px; background-color: {color}; border-radius: 50%; margin-right: 10px; border: 1px solid black;'></div>
+                    <span style='font-size: 14px;'>{label}</span>
+                </div>
+                """
+            legend_html += "</div>"
+            st.sidebar.markdown(legend_html, unsafe_allow_html=True)
+
+            if color_by != "<สีแดงทั้งหมด>":
+                st.info(f"💡 แผนที่กำลังแสดงข้อมูลแยกตาม: **{color_by}**")
 # ==========================================
 # 5. FOOTER
 # ==========================================
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
