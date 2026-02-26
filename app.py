@@ -167,37 +167,72 @@ elif st.session_state['registered'] and df is not None:
             st.table(pd.DataFrame(r_data).sort_values("จำนวน (n)", ascending=False).style.format({'ร้อยละ (%)': '{:.2f}'}))
 
     # 2. Epi Curve
-    elif menu == "📊 Epidemic Curve (Time)":
-        st.title("📊 Interactive Epidemic Curve")
-        date_col = st.sidebar.selectbox("เลือกวันที่เริ่มป่วย", df.columns)
-        col_grp = st.sidebar.selectbox("แยกสีตามกลุ่ม:", ["<none>"] + df.columns.tolist())
-        
-        unit_map = {"Hour": "H", "Day": "D", "Week": "W", "Month": "M"}
-        bin_size = st.sidebar.number_input("ขนาด Bin", min_value=1, value=1)
-        bin_unit = st.sidebar.selectbox("หน่วย", list(unit_map.keys()), index=1)
-        freq = f"{bin_size}{unit_map[bin_unit]}"
+    elif menu == "📊 สร้าง Epi Curve (Time)":
+                st.title("📊 Interactive Epidemic Curve (Hourly Supported)")
+                date_col = st.sidebar.selectbox("เลือกตัวแปรเวลา (Onset Date/Time)", df.columns)
+                col_grp = st.sidebar.selectbox("ตัวแปรแยกสี (Category):", ["<none>"] + df.columns.tolist())
+                
+                unit_map = {"Hour": "H", "Day": "D", "Week": "W", "Month": "M"}
+                bin_size = st.sidebar.number_input("ขนาด Bin", min_value=1, value=1)
+                bin_unit = st.sidebar.selectbox("หน่วย", list(unit_map.keys()), index=0) # Default เป็น Hour สำหรับเคสนี้
+                freq = f"{bin_size}{unit_map[bin_unit]}"
 
-        pad_before = st.sidebar.number_input(f"เผื่อช่วงก่อนหน้า ({bin_unit})", value=1)
-        pad_after = st.sidebar.number_input(f"เผื่อช่วงหลัง ({bin_unit})", value=1)
+                pad_before = st.sidebar.number_input(f"เพิ่มช่วงก่อนหน้า ({bin_unit})", value=2) # เพิ่มเป็น 2 เพื่อความสวยงาม
+                pad_after = st.sidebar.number_input(f"เพิ่มช่วงข้างหลัง ({bin_unit})", value=2)
 
-        df[date_col] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
-        df_clean = df.dropna(subset=[date_col]).copy()
+                # แปลงข้อมูลเป็น DateTime
+                df[date_col] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
+                df_clean = df.dropna(subset=[date_col]).copy()
 
-        if not df_clean.empty:
-            start_range = df_clean[date_col].min() - pd.Timedelta(days=pad_before if bin_unit=="Day" else 0)
-            end_range = df_clean[date_col].max() + pd.Timedelta(days=pad_after if bin_unit=="Day" else 0)
+                if not df_clean.empty:
+                    # --- ส่วนสำคัญ: จัดการเรื่อง Padding ให้ลงล็อกชั่วโมง ---
+                    min_dt = df_clean[date_col].min()
+                    max_dt = df_clean[date_col].max()
 
-            if col_grp == "<none>":
-                chart_df = df_clean.groupby(pd.Grouper(key=date_col, freq=freq)).size().reset_index(name='Cases')
-                fig = px.bar(chart_df, x=date_col, y='Cases', color_discrete_sequence=["#ADD8E6"])
-            else:
-                df_clean[col_grp] = df_clean[col_grp].astype(str).replace('\.0', '', regex=True)
-                chart_df = df_clean.groupby([pd.Grouper(key=date_col, freq=freq), col_grp]).size().reset_index(name='Cases')
-                fig = px.bar(chart_df, x=date_col, y='Cases', color=col_grp, color_discrete_sequence=px.colors.qualitative.Set1)
-            
-            fig.update_layout(bargap=0, xaxis_range=[start_range, end_range])
-            st.plotly_chart(fig, use_container_width=True)
+                    if bin_unit == "Hour":
+                        # ปัดเศษให้เป็นต้นชั่วโมง (เช่น 14:30 -> 14:00)
+                        start_range = (min_dt - pd.Timedelta(hours=pad_before * bin_size)).floor('H')
+                        end_range = (max_dt + pd.Timedelta(hours=pad_after * bin_size)).ceil('H')
+                    else:
+                        # สำหรับรายวัน/สัปดาห์/เดือน
+                        offset = pd.to_timedelta(pad_before * bin_size, unit=bin_unit[0].lower()) if bin_unit != "Month" else pd.DateOffset(months=pad_before)
+                        start_range = (min_dt - offset).floor('D')
+                        end_range = (max_dt + offset).ceil('D')
 
+                    # 1. สร้าง "ไม้บรรทัด" เวลาที่ครบทุกชั่วโมง
+                    full_range = pd.date_range(start=start_range, end=end_range, freq=freq)
+
+                    # 2. ประมวลผลข้อมูล
+                    if col_grp == "<none>":
+                        # นับจำนวนรายชั่วโมง และ Reindex เพื่อเติม 0 ในชั่วโมงที่ไม่มีคนป่วย
+                        counts = df_clean.groupby(pd.Grouper(key=date_col, freq=freq)).size()
+                        chart_df = counts.reindex(full_range, fill_value=0).reset_index()
+                        chart_df.columns = [date_col, 'Cases']
+                        
+                        fig = px.bar(chart_df, x=date_col, y='Cases', 
+                                     color_discrete_sequence=["#ADD8E6"],
+                                     text_auto=True) # โชว์ตัวเลขบนแท่ง
+                    else:
+                        # กรณีแยกสี (เช่น แยกกลุ่มอาการ หรือสถานที่)
+                        counts = df_clean.groupby([pd.Grouper(key=date_col, freq=freq), col_grp]).size().unstack(fill_value=0)
+                        chart_df = counts.reindex(full_range, fill_value=0).stack().reset_index(name='Cases')
+                        chart_df.columns = [date_col, col_grp, 'Cases']
+                        
+                        fig = px.bar(chart_df, x=date_col, y='Cases', color=col_grp,
+                                     color_discrete_sequence=px.colors.qualitative.Set1)
+
+                    # 3. ตกแต่งกราฟ
+                    fig.update_layout(
+                        bargap=0.05, # เพิ่มช่องว่างระหว่างแท่งนิดหน่อยให้ดูง่ายในรายชั่วโมง
+                        xaxis_range=[start_range, end_range],
+                        xaxis_title="วัน-เวลาที่เริ่มป่วย (Onset Time)",
+                        yaxis_title="จำนวนผู้ป่วย (Cases)",
+                        hovermode="x unified"
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    st.success(f"✅ แสดง Epi Curve ราย{bin_unit} เรียบร้อยแล้ว (รวม Padding ก่อน-หลัง)")
+                    
     # 3. Crude Analysis
     elif menu == "🔬 Bivariate Analysis (OR/RR)":
         st.title("🔬 Bivariate Analysis (1=Yes, 0=No)")
@@ -311,6 +346,7 @@ elif st.session_state['registered'] and df is None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
