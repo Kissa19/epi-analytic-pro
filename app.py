@@ -39,8 +39,7 @@ st.sidebar.title("🏥 Epi-Analytic Menu")
 
 if not st.session_state['registered']:
     menu = "📝 ลงทะเบียนใช้งาน"
-    st.sidebar.warning("⚠️ โปรดลงทะเบียนเพื่อปลดล็อกเมนูวิเคราะห์ 
-    🚫 คำเตือนความปลอดภัย: โปรดตรวจสอบไฟล์ Excel และลบคอลัมน์ ชื่อ-นามสกุล หรือข้อมูลระบุตัวตนออกก่อนอัปโหลดเข้าสู่ระบบทุกครั้ง")
+    st.sidebar.warning("⚠️ โปรดลงทะเบียนเพื่อปลดล็อกเมนูวิเคราะห์   🚫 คำเตือนความปลอดภัย: โปรดตรวจสอบไฟล์ Excel และลบคอลัมน์ ชื่อ-นามสกุล หรือข้อมูลระบุตัวตนออกก่อนอัปโหลดเข้าสู่ระบบทุกครั้ง")
 else:
     menu = st.sidebar.radio(
         "เลือกหัวข้อการวิเคราะห์", 
@@ -495,6 +494,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
