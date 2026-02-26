@@ -360,7 +360,99 @@ elif st.session_state['registered'] and df is not None:
                 st.info("คำแนะนำ: ตรวจสอบว่าตัวแปรอิสระมีจำนวนผู้ป่วย (Case) เพียงพอในแต่ละกลุ่มหรือไม่")
 
     # 5. Spot Map (ฉบับอัปเกรด Google Maps / Satellite)
-    # --- 4. แสดง Legend ใน Sidebar (แก้ไขให้รองรับการแสดงผลที่ถูกต้อง) ---
+    elif menu == "🗺️ Spot Map (Place)":
+        st.title("🗺️ Spot Map - Multi-Dimensional Tracking")
+        
+        # 1. ค้นหาคอลัมน์สำคัญ
+        def find_col(possible_names):
+            return next((c for c in df.columns if any(p in c.lower() for p in possible_names)), None)
+
+        lat_c = find_col(['latitude', 'lat', 'ละติจูด'])
+        lon_c = find_col(['longitude', 'lon', 'ลองจิจูด'])
+        age_c = find_col(['age', 'อายุ'])
+        sex_c = find_col(['sex', 'gender', 'เพศ'])
+        date_c = find_col(['onset', 'วันที่เริ่มป่วย', 'วันที่ป่วย'])
+
+        if lat_c and lon_c:
+            # ล้างข้อมูลพิกัด
+            df[lat_c] = pd.to_numeric(df[lat_c], errors='coerce')
+            df[lon_c] = pd.to_numeric(df[lon_c], errors='coerce')
+            df_m = df.dropna(subset=[lat_c, lon_c]).copy()
+
+            # --- ส่วนจัดการตัวแปร "เพศ" และ "กลุ่มอายุ" ให้เป็นหมวดหมู่ ---
+            if sex_c:
+                df_m['เพศ (กลุ่ม)'] = df_m[sex_c].astype(str).str.strip().replace({'M': 'ชาย', 'F': 'หญิง', 'male': 'ชาย', 'female': 'หญิง'})
+            
+            if age_c:
+                # สร้างกลุ่มอายุอัตโนมัติ
+                def age_grouping(a):
+                    try:
+                        val = float(str(a).replace(' ปี', '').strip())
+                        return "< 15 ปี" if val < 15 else "15 ปีขึ้นไป"
+                    except: return "ไม่ระบุ"
+                df_m['กลุ่มอายุ'] = df_m[age_c].apply(age_grouping)
+
+            # --- Sidebar Settings ---
+            st.sidebar.subheader("⚙️ Map Display Settings")
+            map_choice = st.sidebar.radio("รูปแบบแผนที่:", ["Google Hybrid (ดาวเทียม)", "Google Roadmap", "OpenStreetMap"])
+            
+            # รวมตัวแปรทั้งหมดมาเป็นตัวเลือกเดียว
+            # ตัดคอลัมน์ระบบและพิกัดออกเพื่อให้เลือกง่าย
+            excluded_cols = [lat_c, lon_c]
+            base_options = [c for c in df_m.columns if c not in excluded_cols]
+            
+            color_by = st.sidebar.selectbox("เลือกตัวแปรเพื่อแยกกลุ่มสี:", ["<สีแดงทั้งหมด>"] + base_options)
+            rad = st.sidebar.selectbox("รัศมี Buffer (เมตร):", [0, 100, 200, 500], index=1)
+
+            # --- 2. สร้าง Legend และกำหนดสี (Unified Logic) ---
+            legend_dict = {}
+            palette = ['#E6194B', '#3CB44B', '#FFE119', '#4363D8', '#F58231', '#911EB4', '#42D4F4', '#F032E6', '#BFEF45', '#FABEBE', '#469990', '#E6BEFF', '#9A6324', '#FFFAC8', '#800000', '#AAFFC3', '#808000', '#FFD8B1', '#000075', '#A9A9A9']
+            
+            if color_by == "<สีแดงทั้งหมด>":
+                legend_dict = {f"ผู้ป่วยทั้งหมด (n={len(df_m)})": "red"}
+            else:
+                # นับจำนวนเคสในแต่ละกลุ่มเพื่อแสดงใน Legend
+                counts = df_m[color_by].value_counts()
+                unique_vals = counts.index.tolist()
+                
+                # กำหนดสีให้แต่ละกลุ่มค่า
+                for i, val in enumerate(unique_vals):
+                    color = palette[i % len(palette)]
+                    legend_dict[f"{val} (n={counts[val]})"] = color
+
+            # --- 3. สร้างแผนที่ ---
+            tiles_url = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}' if "Hybrid" in map_choice else \
+                        'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}' if "Roadmap" in map_choice else 'OpenStreetMap'
+            
+            m = folium.Map(location=[df_m[lat_c].mean(), df_m[lon_c].mean()], zoom_start=16, tiles=tiles_url, attr='Google')
+
+            # วาดจุดข้อมูล
+            for idx, r in df_m.iterrows():
+                # หาค่าสีจากคำอธิบายใน Legend (ตัดส่วน n=... ออกเพื่อหา Key)
+                if color_by == "<สีแดงทั้งหมด>":
+                    dot_color = "red"
+                else:
+                    val = str(r[color_by])
+                    # ค้นหาสีที่ตรงกับค่านั้นๆ
+                    dot_color = next((v for k, v in legend_dict.items() if k.startswith(val)), "gray")
+
+                # Popup ข้อมูล
+                pop_content = f"<b>ลำดับเคส: {idx+1}</b><br>{color_by}: {r.get(color_by, 'N/A')}"
+                
+                folium.CircleMarker(
+                    location=[r[lat_c], r[lon_c]],
+                    radius=8, color=dot_color, fill=True, fill_opacity=0.8,
+                    tooltip=f"เคสที่ {idx+1}",
+                    popup=folium.Popup(pop_content, max_width=200)
+                ).add_to(m)
+
+                if rad > 0:
+                    folium.Circle([r[lat_c], r[lon_c]], radius=rad, color='blue', fill=True, fill_opacity=0.05, weight=1).add_to(m)
+
+            # แสดงผลแผนที่
+            folium_static(m, width=1000, height=600)
+
+            # --- 4. แสดง Legend ใน Sidebar (แก้ไขให้รองรับการแสดงผลที่ถูกต้อง) ---
             st.sidebar.markdown("---")
             st.sidebar.subheader(f"📍 สัญลักษณ์: {color_by}")
             
