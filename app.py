@@ -358,32 +358,80 @@ elif st.session_state['registered'] and df is not None:
                 st.info("คำแนะนำ: ตรวจสอบว่าตัวแปรอิสระมีจำนวนผู้ป่วย (Case) เพียงพอในแต่ละกลุ่มหรือไม่")
 
     # 5. Spot Map
+    # 5. Spot Map (ฉบับอัปเกรด Google Maps / Satellite)
     elif menu == "🗺️ Spot Map (Place)":
         st.title("🗺️ Spot Map & Buffer Zone")
-        lat_col = next((c for c in df.columns if c.lower() in ['latitude', 'lat']), None)
-        lon_col = next((c for c in df.columns if c.lower() in ['longitude', 'lon']), None)
-        if lat_col and lon_col:
-            radius_m = st.sidebar.selectbox("รัศมี Buffer:", [0, 100, 200, 500, 1000], index=3)
-            df_map = df.dropna(subset=[lat_col, lon_col]).copy()
-            if not df_map.empty:
-                import folium
-                from streamlit_folium import folium_static
-                m = folium.Map(location=[df_map[lat_col].mean(), df_map[lon_col].mean()], zoom_start=14)
-                for idx, row in df_map.iterrows():
-                    folium.CircleMarker([row[lat_col], row[lon_col]], radius=5, color='red', fill=True).add_to(m)
-                    if radius_m > 0: folium.Circle([row[lat_col], row[lon_col]], radius=radius_m, color='blue', fill=True, fill_opacity=0.1, weight=1).add_to(m)
-                folium_static(m, width=1200, height=600)
-            else: st.error("พิกัดไม่ถูกต้อง")
+        
+        # ค้นหาคอลัมน์พิกัด
+        lat_c = next((c for c in df.columns if c.lower() in ['latitude', 'lat', 'ละติจูด']), None)
+        lon_c = next((c for c in df.columns if c.lower() in ['longitude', 'lon', 'ลองจิจูด']), None)
+        
+        if lat_c and lon_c:
+            # --- ส่วนเลือกประเภทแผนที่ ---
+            map_type = st.sidebar.selectbox(
+                "รูปแบบแผนที่ (Map Provider):",
+                ["Standard (OpenStreetMap)", "Google Maps (Roadmap)", "Google Earth (Satellite)", "Google Hybrid"]
+            )
+            
+            rad = st.sidebar.selectbox("รัศมี Buffer (เมตร):", [0, 100, 200, 500, 1000, 5000], index=3)
+            
+            df_m = df.dropna(subset=[lat_c, lon_c]).copy()
+            
+            import folium
+            from streamlit_folium import folium_static
 
-elif st.session_state['registered'] and df is None:
-    st.info("👈 กรุณาอัปโหลดไฟล์ หรือวางลิงก์ Google Sheets เพื่อเริ่มการวิเคราะห์")
+            # กำหนด URL ของ Google Maps Tiles
+            tile_url = None
+            attribution = "Google"
 
+            if map_type == "Google Maps (Roadmap)":
+                tile_url = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
+            elif map_type == "Google Earth (Satellite)":
+                tile_url = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
+            elif map_type == "Google Hybrid":
+                tile_url = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}' # Satellite + Labels
+
+            # สร้างแผนที่
+            if tile_url:
+                m = folium.Map(
+                    location=[df_m[lat_c].mean(), df_m[lon_c].mean()], 
+                    zoom_start=14,
+                    tiles=tile_url,
+                    attr=attribution
+                )
+            else:
+                m = folium.Map(location=[df_m[lat_c].mean(), df_m[lon_c].mean()], zoom_start=14)
+
+            # วาดจุดผู้ป่วยและ Buffer
+            for _, r in df_m.iterrows():
+                folium.CircleMarker(
+                    [r[lat_c], r[lon_c]], 
+                    radius=5, 
+                    color='red', 
+                    fill=True,
+                    popup=f"เคส: {r.get('sex', 'N/A')}"
+                ).add_to(m)
+                
+                if rad > 0:
+                    folium.Circle(
+                        [r[lat_c], r[lon_c]], 
+                        radius=rad, 
+                        color='blue', 
+                        fill=True, 
+                        fill_opacity=0.1, 
+                        weight=1
+                    ).add_to(m)
+            
+            folium_static(m, width=1200, height=600)
+        else:
+            st.error("⚠️ ไม่พบคอลัมน์ Latitude/Longitude ในข้อมูลของคุณ")
 # ==========================================
 # 5. FOOTER
 # ==========================================
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
