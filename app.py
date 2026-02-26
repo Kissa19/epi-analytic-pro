@@ -361,89 +361,110 @@ elif st.session_state['registered'] and df is not None:
 
     # 5. Spot Map (ฉบับอัปเกรด Google Maps / Satellite)
     elif menu == "🗺️ Spot Map (Place)":
-        st.title("🗺️ Spot Map - Case Sequence Tracking")
+        st.title("🗺️ Spot Map - Advanced Visualization")
         
-        # 1. ค้นหาคอลัมน์พิกัด
+        # 1. ค้นหาคอลัมน์พิกัดและข้อมูลพื้นฐาน (รองรับทั้งไทยและอังกฤษ)
         lat_c = next((c for c in df.columns if c.lower() in ['latitude', 'lat', 'ละติจูด']), None)
         lon_c = next((c for c in df.columns if c.lower() in ['longitude', 'lon', 'ลองจิจูด']), None)
+        age_c = next((c for c in df.columns if c.lower() in ['age', 'อายุ']), None)
+        sex_c = next((c for c in df.columns if c.lower() in ['sex', 'gender', 'เพศ']), None)
+        class_c = next((c for c in df.columns if 'ชั้น' in c or 'class' in c.lower()), None)
         
         if lat_c and lon_c:
-            # เรียงข้อมูลตามวันเวลาเริ่มป่วย (ถ้ามี) เพื่อให้ลำดับเคสถูกต้องตามระบาดวิทยา
+            # เรียงลำดับตามเวลา (ถ้ามี) เพื่อรัน Case No.
             date_col = next((c for c in df.columns if 'onset' in c.lower() or 'วันที่' in c.lower()), None)
             if date_col:
+                df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
                 df = df.sort_values(by=date_col).reset_index(drop=True)
             
             df_m = df.dropna(subset=[lat_c, lon_c]).copy()
-            
-            # --- Sidebar Settings ---
-            st.sidebar.subheader("ตัวเลือกการแสดงผล")
-            map_choice = st.sidebar.radio("รูปแบบแผนที่:", ["Google Hybrid", "Google Roadmap", "OpenStreetMap"])
-            
-            # เลือกตัวแปรแยกสี
-            color_options = ["<None>", "เพศ", "ชั้นเรียน", "กลุ่มอายุ (<15 vs 15+)"]
-            color_by = st.sidebar.selectbox("แยกสีจุดตาม:", color_options + [c for c in df.columns if c not in [lat_c, lon_c]])
-            
-            rad = st.sidebar.selectbox("รัศมี Buffer (เมตร):", [0, 100, 200, 500], index=1)
 
-            # --- ฟังก์ชันกำหนดสี ---
-            def get_color(row, color_by):
-                if color_by == "<None>": return "red"
-                elif color_by == "เพศ":
-                    val = str(row.get('เพศ', '')).strip()
-                    return "blue" if 'ชาย' in val else "deeppink" if 'หญิง' in val else "gray"
-                # ... (ใส่โลจิกสีอื่นๆ ตามโค้ดเดิม) ...
-                return "red"
+            # --- [จุดสำคัญ] ส่วนเมนูเลือกใน Sidebar ---
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("⚙️ ตั้งค่าการแสดงผลแผนที่")
+            
+            # 1. เลือกรูปแบบแผนที่
+            map_choice = st.sidebar.radio("รูปแบบแผนที่:", ["Google Hybrid (ดาวเทียม)", "Google Roadmap", "OpenStreetMap"])
+            
+            # 2. เลือกตัวแปรที่ต้องการแยกสี (Dynamic Options)
+            color_options = ["<สีแดงทั้งหมด>"]
+            if sex_c: color_options.append("แยกตามเพศ")
+            if age_c: color_options.append("แยกตามกลุ่มอายุ (<15 vs 15+)")
+            if class_c: color_options.append("แยกตามชั้นเรียน")
+            
+            # เพิ่มคอลัมน์อื่นๆ ที่เหลือในไฟล์ให้เลือกได้ด้วย
+            other_cols = [c for c in df.columns if c not in [lat_c, lon_c, age_c, sex_c, class_c]]
+            color_by = st.sidebar.selectbox("เลือกตัวแปรเพื่อแยกสีจุด:", color_options + other_cols)
+            
+            rad = st.sidebar.selectbox("รัศมีวงรอบ (Buffer):", [0, 100, 200, 500], index=1)
 
-            # --- สร้างแผนที่ ---
+            # --- ฟังก์ชันกำหนดสีแบบฉลาด ---
+            def get_marker_color(row, mode):
+                if mode == "<สีแดงทั้งหมด>": return "red"
+                elif mode == "แยกตามเพศ":
+                    val = str(row.get(sex_c, '')).strip()
+                    return "blue" if 'ชาย' in val or 'M' in val.upper() else "deeppink" if 'หญิง' in val or 'F' in val.upper() else "gray"
+                elif mode == "แยกตามกลุ่มอายุ (<15 vs 15+)":
+                    try:
+                        val = float(row.get(age_c, 0))
+                        return "green" if val < 15 else "orange"
+                    except: return "gray"
+                else:
+                    # กรณีเลือกคอลัมน์อื่นๆ ให้สุ่มสีตามค่าที่ไม่ซ้ำ
+                    unique_vals = sorted(df_m[mode].unique().astype(str))
+                    colors = ['red', 'blue', 'green', 'purple', 'orange', 'darkred', 'cadetblue', 'pink']
+                    color_map = {v: colors[i % len(colors)] for i, v in enumerate(unique_vals)}
+                    return color_map.get(str(row.get(mode, '')), "gray")
+
+            # --- การสร้างแผนที่ ---
             tiles_url = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}' if "Hybrid" in map_choice else \
                         'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}' if "Roadmap" in map_choice else 'OpenStreetMap'
             
-            m = folium.Map(
-                location=[df_m[lat_c].mean(), df_m[lon_c].mean()], 
-                zoom_start=16, 
-                tiles=tiles_url, 
-                attr='Google'
-            )
+            m = folium.Map(location=[df_m[lat_c].mean(), df_m[lon_c].mean()], zoom_start=16, tiles=tiles_url, attr='Google')
 
-            # --- วาดจุดและลำดับเคส ---
+            # --- วาดจุดข้อมูล ---
             for idx, r in df_m.iterrows():
-                p_color = get_color(r, color_by)
-                case_no = idx + 1  # ลำดับเคสเริ่มจาก 1
+                case_no = idx + 1
+                dot_color = get_marker_color(r, color_by)
                 
-                # ข้อความเมื่อคลิก (Popup)
-                popup_text = f"""
-                <div style='font-family: sans-serif; font-size: 13px; min-width: 150px;'>
-                    <b style='color:red; font-size: 14px;'>📍 ผู้ป่วยรายที่: {case_no}</b><hr style='margin:5px 0;'>
-                    <b>เพศ:</b> {r.get('เพศ', 'N/A')}<br>
-                    <b>อายุ:</b> {r.get('อายุ', 'N/A')} ปี<br>
-                    <b>ชั้นเรียน:</b> {r.get('ชั้นเรียน', 'N/A')}<br>
-                    <b>วันเริ่มป่วย:</b> {r.get(date_col, 'N/A') if date_col else 'N/A'}
+                # รายละเอียดใน Popup
+                info = f"""
+                <div style='font-family:Tahoma; font-size:12px;'>
+                <b>🏥 ผู้ป่วยรายที่: {case_no}</b><br>
+                <b>เพศ:</b> {r.get(sex_c, 'N/A')} | <b>อายุ:</b> {r.get(age_c, 'N/A')} ปี<br>
+                <b>ชั้นเรียน:</b> {r.get(class_c, 'N/A')}<br>
+                <b>เริ่มป่วย:</b> {r.get(date_col, 'N/A')}<br>
+                <hr>
+                <b>พิกัด:</b> {r[lat_c]}, {r[lon_c]}
                 </div>
                 """
                 
                 folium.CircleMarker(
                     location=[r[lat_c], r[lon_c]],
                     radius=8,
-                    color=p_color,
+                    color=dot_color,
                     fill=True,
                     fill_opacity=0.8,
-                    # Tooltip: โชว์เลขเคสเมื่อเอาเมาส์ชี้
-                    tooltip=f"เคสที่ {case_no}", 
-                    popup=folium.Popup(popup_text, max_width=300)
+                    tooltip=f"เคสที่ {case_no} ({r.get(sex_c, '')})",
+                    popup=folium.Popup(info, max_width=250)
                 ).add_to(m)
 
-                # วาด Buffer
                 if rad > 0:
                     folium.Circle([r[lat_c], r[lon_c]], radius=rad, color='blue', fill=True, fill_opacity=0.05, weight=1).add_to(m)
 
             folium_static(m, width=1000, height=600)
-            st.success(f"✅ แสดงจุดเกิดโรคพร้อมลำดับเคส {len(df_m)} ราย เรียบร้อยแล้ว")
+            
+            # แสดงสถิติสรุปด้านล่าง
+            st.write(f"📊 **สรุปข้อมูล:** พบตำแหน่งพิกัดทั้งหมด {len(df_m)} ราย")
+        else:
+            st.warning("⚠️ ไม่พบข้อมูลพิกัด (Lat/Lon) กรุณาตรวจสอบชื่อคอลัมน์ในไฟล์ Excel")
 # ==========================================
 # 5. FOOTER
 # ==========================================
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
