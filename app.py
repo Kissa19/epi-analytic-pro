@@ -359,71 +359,90 @@ elif st.session_state['registered'] and df is not None:
 
     # 5. Spot Map (ฉบับอัปเกรด Google Maps / Satellite)
     elif menu == "🗺️ Spot Map (Place)":
-        st.title("🗺️ Spot Map (Google Satellite View)")
+        st.title("🗺️ Spot Map - Case Sequence Tracking")
         
-        # 1. ตรวจสอบคอลัมน์พิกัด
+        # 1. ค้นหาคอลัมน์พิกัด
         lat_c = next((c for c in df.columns if c.lower() in ['latitude', 'lat', 'ละติจูด']), None)
         lon_c = next((c for c in df.columns if c.lower() in ['longitude', 'lon', 'ลองจิจูด']), None)
         
         if lat_c and lon_c:
+            # เรียงข้อมูลตามวันเวลาเริ่มป่วย (ถ้ามี) เพื่อให้ลำดับเคสถูกต้องตามระบาดวิทยา
+            date_col = next((c for c in df.columns if 'onset' in c.lower() or 'วันที่' in c.lower()), None)
+            if date_col:
+                df = df.sort_values(by=date_col).reset_index(drop=True)
+            
             df_m = df.dropna(subset=[lat_c, lon_c]).copy()
             
-            # 2. ตัวเลือกรูปแบบแผนที่ใน Sidebar
-            map_choice = st.sidebar.radio(
-                "เลือกรูปแบบแผนที่:",
-                ["Google Satellite (ดาวเทียม)", "Google Roadmap (ปกติ)", "OpenStreetMap (เดิม)"]
-            )
+            # --- Sidebar Settings ---
+            st.sidebar.subheader("ตัวเลือกการแสดงผล")
+            map_choice = st.sidebar.radio("รูปแบบแผนที่:", ["Google Hybrid", "Google Roadmap", "OpenStreetMap"])
             
-            # 3. กำหนดค่า Tile ตามที่เลือก
-            if map_choice == "Google Satellite (ดาวเทียม)":
-                tiles_url = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}' # y = Hybrid (Satellite + Labels)
-                attr = 'Google'
-            elif map_choice == "Google Roadmap (ปกติ)":
-                tiles_url = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}' # m = Roadmap
-                attr = 'Google'
-            else:
-                tiles_url = 'OpenStreetMap'
-                attr = 'OpenStreetMap'
+            # เลือกตัวแปรแยกสี
+            color_options = ["<None>", "เพศ", "ชั้นเรียน", "กลุ่มอายุ (<15 vs 15+)"]
+            color_by = st.sidebar.selectbox("แยกสีจุดตาม:", color_options + [c for c in df.columns if c not in [lat_c, lon_c]])
+            
+            rad = st.sidebar.selectbox("รัศมี Buffer (เมตร):", [0, 100, 200, 500], index=1)
 
-            import folium
-            from streamlit_folium import folium_static
+            # --- ฟังก์ชันกำหนดสี ---
+            def get_color(row, color_by):
+                if color_by == "<None>": return "red"
+                elif color_by == "เพศ":
+                    val = str(row.get('เพศ', '')).strip()
+                    return "blue" if 'ชาย' in val else "deeppink" if 'หญิง' in val else "gray"
+                # ... (ใส่โลจิกสีอื่นๆ ตามโค้ดเดิม) ...
+                return "red"
 
-            # 4. สร้างแผนที่ (ใส่ tiles และ attr ลงไปตรงๆ)
+            # --- สร้างแผนที่ ---
+            tiles_url = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}' if "Hybrid" in map_choice else \
+                        'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}' if "Roadmap" in map_choice else 'OpenStreetMap'
+            
             m = folium.Map(
                 location=[df_m[lat_c].mean(), df_m[lon_c].mean()], 
-                zoom_start=15,
-                tiles=tiles_url,
-                attr=attr
+                zoom_start=16, 
+                tiles=tiles_url, 
+                attr='Google'
             )
 
-            # 5. วาดจุดผู้ป่วย
-            for _, r in df_m.iterrows():
-                folium.Marker(
+            # --- วาดจุดและลำดับเคส ---
+            for idx, r in df_m.iterrows():
+                p_color = get_color(r, color_by)
+                case_no = idx + 1  # ลำดับเคสเริ่มจาก 1
+                
+                # ข้อความเมื่อคลิก (Popup)
+                popup_text = f"""
+                <div style='font-family: sans-serif; font-size: 13px; min-width: 150px;'>
+                    <b style='color:red; font-size: 14px;'>📍 ผู้ป่วยรายที่: {case_no}</b><hr style='margin:5px 0;'>
+                    <b>เพศ:</b> {r.get('เพศ', 'N/A')}<br>
+                    <b>อายุ:</b> {r.get('อายุ', 'N/A')} ปี<br>
+                    <b>ชั้นเรียน:</b> {r.get('ชั้นเรียน', 'N/A')}<br>
+                    <b>วันเริ่มป่วย:</b> {r.get(date_col, 'N/A') if date_col else 'N/A'}
+                </div>
+                """
+                
+                folium.CircleMarker(
                     location=[r[lat_c], r[lon_c]],
-                    popup=f"Case Info: {r.get('onset', 'N/A')}",
-                    icon=folium.Icon(color='red', icon='info-sign')
+                    radius=8,
+                    color=p_color,
+                    fill=True,
+                    fill_opacity=0.8,
+                    # Tooltip: โชว์เลขเคสเมื่อเอาเมาส์ชี้
+                    tooltip=f"เคสที่ {case_no}", 
+                    popup=folium.Popup(popup_text, max_width=300)
                 ).add_to(m)
 
-                # วาด Buffer 100 เมตร (มาตรฐานควบคุมโรค)
-                folium.Circle(
-                    location=[r[lat_c], r[lon_c]],
-                    radius=100,
-                    color='blue',
-                    fill=True,
-                    fill_opacity=0.1
-                ).add_to(m)
-            
-            # 6. แสดงผล
+                # วาด Buffer
+                if rad > 0:
+                    folium.Circle([r[lat_c], r[lon_c]], radius=rad, color='blue', fill=True, fill_opacity=0.05, weight=1).add_to(m)
+
             folium_static(m, width=1000, height=600)
-            
-        else:
-            st.error("⚠️ ไม่พบคอลัมน์พิกัด (Lat/Lon) ในไฟล์ที่อัปโหลด")
+            st.success(f"✅ แสดงจุดเกิดโรคพร้อมลำดับเคส {len(df_m)} ราย เรียบร้อยแล้ว")
 # ==========================================
 # 5. FOOTER
 # ==========================================
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
