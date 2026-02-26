@@ -167,8 +167,8 @@ elif st.session_state['registered'] and df is not None:
             st.table(pd.DataFrame(r_data).sort_values("จำนวน (n)", ascending=False).style.format({'ร้อยละ (%)': '{:.2f}'}))
 
     # 2. Epi Curve
-    elif menu == "📊 สร้าง Epi Curve (Time)":
-                st.title("📊 Interactive Epidemic Curve (Hourly Supported)")
+    elif menu == "📊 Epidemic Curve (Time)":
+                st.title("📊 Interactive Epidemic Curve (ชั่วโมง/วัน)")
                 date_col = st.sidebar.selectbox("เลือกตัวแปรเวลา (Onset Date/Time)", df.columns)
                 col_grp = st.sidebar.selectbox("ตัวแปรแยกสี (Category):", ["<none>"] + df.columns.tolist())
                 
@@ -346,6 +346,7 @@ elif st.session_state['registered'] and df is None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
