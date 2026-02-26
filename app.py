@@ -357,80 +357,74 @@ elif st.session_state['registered'] and df is not None:
                 st.error(f"⚠️ ไม่สามารถประมวลผลได้: {e}")
                 st.info("คำแนะนำ: ตรวจสอบว่าตัวแปรอิสระมีจำนวนผู้ป่วย (Case) เพียงพอในแต่ละกลุ่มหรือไม่")
 
-    # 5. Spot Map
     # 5. Spot Map (ฉบับอัปเกรด Google Maps / Satellite)
     elif menu == "🗺️ Spot Map (Place)":
-        st.title("🗺️ Spot Map & Buffer Zone")
+        st.title("🗺️ Spot Map (Google Satellite View)")
         
-        # ค้นหาคอลัมน์พิกัด
+        # 1. ตรวจสอบคอลัมน์พิกัด
         lat_c = next((c for c in df.columns if c.lower() in ['latitude', 'lat', 'ละติจูด']), None)
         lon_c = next((c for c in df.columns if c.lower() in ['longitude', 'lon', 'ลองจิจูด']), None)
         
         if lat_c and lon_c:
-            # --- ส่วนเลือกประเภทแผนที่ ---
-            map_type = st.sidebar.selectbox(
-                "รูปแบบแผนที่ (Map Provider):",
-                ["Standard (OpenStreetMap)", "Google Maps (Roadmap)", "Google Earth (Satellite)", "Google Hybrid"]
-            )
-            
-            rad = st.sidebar.selectbox("รัศมี Buffer (เมตร):", [0, 100, 200, 500, 1000, 5000], index=3)
-            
             df_m = df.dropna(subset=[lat_c, lon_c]).copy()
             
+            # 2. ตัวเลือกรูปแบบแผนที่ใน Sidebar
+            map_choice = st.sidebar.radio(
+                "เลือกรูปแบบแผนที่:",
+                ["Google Satellite (ดาวเทียม)", "Google Roadmap (ปกติ)", "OpenStreetMap (เดิม)"]
+            )
+            
+            # 3. กำหนดค่า Tile ตามที่เลือก
+            if map_choice == "Google Satellite (ดาวเทียม)":
+                tiles_url = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}' # y = Hybrid (Satellite + Labels)
+                attr = 'Google'
+            elif map_choice == "Google Roadmap (ปกติ)":
+                tiles_url = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}' # m = Roadmap
+                attr = 'Google'
+            else:
+                tiles_url = 'OpenStreetMap'
+                attr = 'OpenStreetMap'
+
             import folium
             from streamlit_folium import folium_static
 
-            # กำหนด URL ของ Google Maps Tiles
-            tile_url = None
-            attribution = "Google"
+            # 4. สร้างแผนที่ (ใส่ tiles และ attr ลงไปตรงๆ)
+            m = folium.Map(
+                location=[df_m[lat_c].mean(), df_m[lon_c].mean()], 
+                zoom_start=15,
+                tiles=tiles_url,
+                attr=attr
+            )
 
-            if map_type == "Google Maps (Roadmap)":
-                tile_url = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'
-            elif map_type == "Google Earth (Satellite)":
-                tile_url = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
-            elif map_type == "Google Hybrid":
-                tile_url = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}' # Satellite + Labels
-
-            # สร้างแผนที่
-            if tile_url:
-                m = folium.Map(
-                    location=[df_m[lat_c].mean(), df_m[lon_c].mean()], 
-                    zoom_start=14,
-                    tiles=tile_url,
-                    attr=attribution
-                )
-            else:
-                m = folium.Map(location=[df_m[lat_c].mean(), df_m[lon_c].mean()], zoom_start=14)
-
-            # วาดจุดผู้ป่วยและ Buffer
+            # 5. วาดจุดผู้ป่วย
             for _, r in df_m.iterrows():
-                folium.CircleMarker(
-                    [r[lat_c], r[lon_c]], 
-                    radius=5, 
-                    color='red', 
-                    fill=True,
-                    popup=f"เคส: {r.get('sex', 'N/A')}"
+                folium.Marker(
+                    location=[r[lat_c], r[lon_c]],
+                    popup=f"Case Info: {r.get('onset', 'N/A')}",
+                    icon=folium.Icon(color='red', icon='info-sign')
                 ).add_to(m)
-                
-                if rad > 0:
-                    folium.Circle(
-                        [r[lat_c], r[lon_c]], 
-                        radius=rad, 
-                        color='blue', 
-                        fill=True, 
-                        fill_opacity=0.1, 
-                        weight=1
-                    ).add_to(m)
+
+                # วาด Buffer 100 เมตร (มาตรฐานควบคุมโรค)
+                folium.Circle(
+                    location=[r[lat_c], r[lon_c]],
+                    radius=100,
+                    color='blue',
+                    fill=True,
+                    fill_opacity=0.1
+                ).add_to(m)
             
-            folium_static(m, width=1200, height=600)
+            # 6. แสดงผล
+            folium_static(m, width=1000, height=600)
+            
         else:
-            st.error("⚠️ ไม่พบคอลัมน์ Latitude/Longitude ในข้อมูลของคุณ")
+            st.error("⚠️ ไม่พบคอลัมน์พิกัด (Lat/Lon) ในไฟล์ที่อัปโหลด")
 # ==========================================
 # 5. FOOTER
 # ==========================================
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
