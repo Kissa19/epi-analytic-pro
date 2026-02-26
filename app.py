@@ -107,17 +107,63 @@ if st.session_state['registered']:
                 st.error(f"ไม่สามารถเชื่อมต่อ Google Sheets ได้: {e}")
                 st.info("💡 แนะนำ: ตรวจสอบว่าแชร์ไฟล์เป็น 'Anyone with the link can view' หรือยัง")
 
-# --- หน้าลงทะเบียน ---
+# --- ส่วนหน้าลงทะเบียน (Registration Page) ---
 if menu == "📝 ลงทะเบียนใช้งาน" or menu == "📝 ข้อมูลการลงทะเบียน (แก้ไข)":
-    st.title("📝 ระบบลงทะเบียนใช้งาน")
+    st.title("📝 ระบบลงทะเบียนใช้งาน (PDPA Compliant)")
+    st.info("ℹ️ ระบบจะบันทึกข้อมูลเฉพาะประเภททีมและหน่วยงานเพื่อใช้ในการสรุปผลเชิงสถิติเท่านั้น โดยไม่เก็บข้อมูลส่วนบุคคล")
+
     with st.form("registration_form"):
-        u_name = st.text_input("ประเภททีม เช่น SRRT/CDCU/JIT/SAT/อื่นๆ ระบุ...", value="" if not st.session_state['registered'] else "ผู้ใช้งานเดิม")
-        u_agency = st.text_input("หน่วยงาน")
-        u_purpose = st.selectbox("วัตถุประสงค์การใช้งาน", ["สอบสวนโรคหน้างาน", "วิจัย/วิชาการ", "วิเคราะห์ข้อมูล"])
+        # 1. ประเภททีม (ตามที่คุณปรับแก้โค้ดไว้)
+        u_team_type = st.selectbox("ประเภททีม", ["CDCU", "SRRT", "SAT", "JIT", "อื่นๆ"])
+        
+        # 2. หน่วยงาน
+        u_agency = st.text_input("หน่วยงาน / สังกัด")
+        
+        # 3. วัตถุประสงค์
+        u_purpose = st.selectbox("วัตถุประสงค์การใช้งาน", [
+            "สอบสวนโรคภาคสนาม (Field Investigation)", 
+            "วิเคราะห์ข้อมูลทางระบาดวิทยา", 
+            "ซ้อมแผนตอบโต้ภาวะฉุกเฉิน", 
+            "การเรียนการสอน/วิชาการ"
+        ])
+
         if st.form_submit_button("บันทึกข้อมูลและเริ่มใช้งาน"):
-            st.session_state['registered'] = True
-            st.balloons()
-            st.rerun()
+            # ดึงเวลาปัจจุบัน
+            from datetime import datetime
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # เตรียมข้อมูล (ตัดชื่อ-นามสกุลออกแล้ว)
+            new_reg_entry = {
+                "วันที่-เวลา": current_time,
+                "ประเภททีม": u_team_type,
+                "หน่วยงาน": u_agency,
+                "วัตถุประสงค์การใช้งาน": u_purpose
+            }
+
+            try:
+                # เชื่อมต่อกับ Google Sheets ตามลิงก์ที่คุณให้มา
+                log_url = "https://docs.google.com/spreadsheets/d/1YRqCkU2JABM61evfyPJny3tYzAIwuJFCRVAJ-uuKrHE/edit?usp=sharing"
+                conn = st.connection("gsheets", type=GSheetsConnection)
+                
+                # อ่านข้อมูลเดิม (ถ้ามี)
+                existing_data = conn.read(spreadsheet=log_url)
+                
+                # ต่อท้ายข้อมูลใหม่
+                updated_df = pd.concat([existing_data, pd.DataFrame([new_reg_entry])], ignore_index=True)
+                
+                # อัปเดตกลับไปยัง Google Sheets
+                conn.update(spreadsheet=log_url, data=updated_df)
+                
+                # เก็บสถานะลงทะเบียนในเครื่องผู้ใช้
+                st.session_state['registered'] = True
+                st.success("✅ ลงทะเบียนสำเร็จ และเริ่มระบบวิเคราะห์ข้อมูล")
+                st.balloons()
+                st.rerun()
+
+            except Exception as e:
+                # กรณีบันทึกลง Sheet ไม่สำเร็จ (เช่น สิทธิ์การเขียน) ยังคงให้ใช้งานแอปต่อได้
+                st.session_state['registered'] = True
+                st.warning(f"⚠️ ระบบบันทึกสถิติขัดข้อง แต่ท่านสามารถใช้งานแอปได้ปกติ: {e}")
 
 # --- เมนูวิเคราะห์ ---
 elif st.session_state['registered'] and df is not None:
@@ -346,6 +392,7 @@ elif st.session_state['registered'] and df is None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
