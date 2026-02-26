@@ -489,46 +489,12 @@ elif st.session_state['registered'] and df is not None:
         else:
             st.error("⚠️ ไม่พบคอลัมน์ละติจูด/ลองจิจูด กรุณาตรวจสอบชื่อคอลัมน์ในไฟล์ Excel (เช่น lat, lon, latitude, longitude)")
 
-# ---     # 5. ส่วนสรุปสถิติและปุ่มดาวน์โหลด (เพิ่มใหม่) ---
-            st.markdown("---")
-            col1, col2 = st.columns([1, 1])
-            
-            with col1:
-                st.subheader(f"📊 สรุปสถิติตาม: {color_by}")
-                # คำนวณความถี่และร้อยละ
-                summary_df = df_m[color_by].value_counts().reset_index()
-                summary_df.columns = [color_by, 'จำนวน (n)']
-                summary_df['ร้อยละ (%)'] = (summary_df['จำนวน (n)'] / summary_df['จำนวน (n)'].sum() * 100).round(2)
-                st.table(summary_df)
-
-            with col2:
-                st.subheader("📥 ดาวน์โหลดรายงาน")
-                st.write("คุณสามารถดาวน์โหลดข้อมูลผู้ป่วยทั้งหมดที่ปรากฏบนแผนที่นี้ เพื่อนำไปใช้ในรายงานการสอบสวนโรคได้")
-                
-                # เตรียมไฟล์ Excel สำหรับดาวน์โหลด
-                import io
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                    df_m.to_excel(writer, index=False, sheet_name='Mapped_Cases')
-                    # เพิ่มหน้าสรุปสถิติเข้าไปด้วย
-                    summary_df.to_excel(writer, index=False, sheet_name='Summary_Statistics')
-                
-                st.download_button(
-                    label="💾 ดาวน์โหลดรายงานสรุป (Excel)",
-                    data=buffer.getvalue(),
-                    file_name=f"Epi_SpotMap_Report_{color_by}.xlsx",
-                    mime="application/vnd.ms-excel",
-                    help="คลิกเพื่อดาวน์โหลดข้อมูลพิกัดและสถิติสรุป"
-                )
-
-                # ปุ่มแนะนำการบันทึกภาพ
-                st.info("💡 **เคล็ดลับการนำเสนอ:** ท่านสามารถคลิกขวาที่แผนที่แล้วเลือก 'Save Image' (หรือใช้ Snipping Tool) เพื่อบันทึกภาพแผนที่ดาวเทียมไปประกอบในไฟล์รายงานได้ทันทีครับ")
-# ==========================================
 # 5. FOOTER
 # ==========================================
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
