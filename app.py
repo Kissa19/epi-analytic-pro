@@ -8,6 +8,7 @@ import scipy.stats as stats
 from scipy.stats import hypergeom
 from streamlit_gsheets import GSheetsConnection
 import plotly.express as px
+import requests
 
 # ==========================================
 # 1. CONFIGURATION
@@ -109,61 +110,52 @@ if st.session_state['registered']:
 
 # --- ส่วนหน้าลงทะเบียน (Registration Page) ---
 if menu == "📝 ลงทะเบียนใช้งาน" or menu == "📝 ข้อมูลการลงทะเบียน (แก้ไข)":
-    st.title("📝 ระบบลงทะเบียนใช้งาน (PDPA Compliant)")
-    st.info("ℹ️ ระบบจะบันทึกข้อมูลเฉพาะประเภททีมและหน่วยงานเพื่อใช้ในการสรุปผลเชิงสถิติเท่านั้น โดยไม่เก็บข้อมูลส่วนบุคคล")
+    st.title("📝 ลงทะเบียนเข้าใช้งานระบบ")
+    st.caption("ระบบบันทึกข้อมูลตามมาตรฐาน PDPA ไม่มีการเก็บชื่อ-นามสกุลของผู้ใช้งาน")
 
-    with st.form("registration_form"):
-        # 1. ประเภททีม (ตามที่คุณปรับแก้โค้ดไว้)
-        u_team_type = st.selectbox("ประเภททีม", ["CDCU", "SRRT", "SAT", "JIT", "อื่นๆ"])
-        
-        # 2. หน่วยงาน
-        u_agency = st.text_input("หน่วยงาน / สังกัด")
-        
-        # 3. วัตถุประสงค์
-        u_purpose = st.selectbox("วัตถุประสงค์การใช้งาน", [
-            "สอบสวนโรคภาคสนาม (Field Investigation)", 
-            "วิเคราะห์ข้อมูลทางระบาดวิทยา", 
-            "ซ้อมแผนตอบโต้ภาวะฉุกเฉิน", 
-            "การเรียนการสอน/วิชาการ"
+    with st.form("reg_form_v2"):
+        u_team = st.selectbox("ประเภททีม", ["CDCU", "SRRT", "SAT", "JIT", "อื่นๆ"])
+        u_agency = st.text_input("หน่วยงาน / สังกัด (เช่น สสจ.อุดรธานี, รพ.เลย)")
+        u_purpose = st.selectbox("วัตถุประสงค์", [
+            "สอบสวนโรคภาคสนาม", "วิเคราะห์สถิติวิชาการ", "ซ้อมแผนฯ", "อื่นๆ"
         ])
+        
+        submit_reg = st.form_submit_button("เริ่มใช้งานระบบ")
 
-        if st.form_submit_button("บันทึกข้อมูลและเริ่มใช้งาน"):
-            # ดึงเวลาปัจจุบัน
-            from datetime import datetime
-            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            # เตรียมข้อมูล (ตัดชื่อ-นามสกุลออกแล้ว)
-            new_reg_entry = {
-                "วันที่-เวลา": current_time,
-                "ประเภททีม": u_team_type,
-                "หน่วยงาน": u_agency,
-                "วัตถุประสงค์การใช้งาน": u_purpose
-            }
+        if submit_reg:
+            if not u_agency:
+                st.error("กรุณาระบุหน่วยงานก่อนเข้าใช้งาน")
+            else:
+                from datetime import datetime
+                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
+                # เตรียมข้อมูลสำหรับส่งไปยัง Apps Script
+                payload = {
+                    "timestamp": now,
+                    "team": u_team,
+                    "agency": u_agency,
+                    "purpose": u_purpose
+                }
 
-            try:
-                # เชื่อมต่อกับ Google Sheets ตามลิงก์ที่คุณให้มา
-                log_url = "https://docs.google.com/spreadsheets/d/1YRqCkU2JABM61evfyPJny3tYzAIwuJFCRVAJ-uuKrHE/edit?usp=sharing"
-                conn = st.connection("gsheets", type=GSheetsConnection)
-                
-                # อ่านข้อมูลเดิม (ถ้ามี)
-                existing_data = conn.read(spreadsheet=log_url)
-                
-                # ต่อท้ายข้อมูลใหม่
-                updated_df = pd.concat([existing_data, pd.DataFrame([new_reg_entry])], ignore_index=True)
-                
-                # อัปเดตกลับไปยัง Google Sheets
-                conn.update(spreadsheet=log_url, data=updated_df)
-                
-                # เก็บสถานะลงทะเบียนในเครื่องผู้ใช้
-                st.session_state['registered'] = True
-                st.success("✅ ลงทะเบียนสำเร็จ และเริ่มระบบวิเคราะห์ข้อมูล")
-                st.balloons()
-                st.rerun()
-
-            except Exception as e:
-                # กรณีบันทึกลง Sheet ไม่สำเร็จ (เช่น สิทธิ์การเขียน) ยังคงให้ใช้งานแอปต่อได้
-                st.session_state['registered'] = True
-                st.warning(f"⚠️ ระบบบันทึกสถิติขัดข้อง แต่ท่านสามารถใช้งานแอปได้ปกติ: {e}")
+                try:
+                    # 🔴 สำคัญ: เปลี่ยน URL ด้านล่างนี้เป็น Web App URL ที่คุณได้จากการ Deploy ใน Google Sheets
+                    url = "https://script.google.com/macros/s/AKfycbxVGzrB9IjdvD90g2Zm8cKNwYE1PMrtaaun7YlBkGjWoL3UjVw74K49B_wg4cBfedeB/exec"
+                    
+                    # ส่งข้อมูลแบบ POST
+                    response = requests.post(url, json=payload)
+                    
+                    if response.status_code == 200:
+                        st.session_state['registered'] = True
+                        st.success("✅ บันทึกประวัติการเข้าใช้งานเรียบร้อย")
+                        st.balloons()
+                        st.rerun()
+                    else:
+                        raise Exception("เซิร์ฟเวอร์ตอบกลับด้วยสถานะอื่น")
+                        
+                except Exception as e:
+                    # หากบันทึกไม่ได้ (เช่น ลิงก์เสีย) ยังคงอนุญาตให้เข้าใช้งานแอปได้
+                    st.session_state['registered'] = True 
+                    st.warning(f"⚠️ บันทึกสถิติไม่สำเร็จ แต่ท่านสามารถใช้งานแอปได้ปกติ: {e}")
 
 # --- เมนูวิเคราะห์ ---
 elif st.session_state['registered'] and df is not None:
@@ -392,6 +384,7 @@ elif st.session_state['registered'] and df is None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
