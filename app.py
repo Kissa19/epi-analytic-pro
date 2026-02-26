@@ -231,7 +231,7 @@ elif st.session_state['registered'] and df is not None:
                     )
                     
                     st.plotly_chart(fig, use_container_width=True)
-                    st.success(f"✅ แสดง Epi Curve ราย{bin_unit} เรียบร้อยแล้ว (รวม Padding ก่อน-หลัง)")
+                    st.success(f"✅ แสดง Epidemic Curve ราย {bin_unit} เรียบร้อยแล้ว (รวม Padding ก่อน-หลัง)")
                     
     # 3. Crude Analysis
     elif menu == "🔬 Bivariate Analysis (OR/RR)":
@@ -346,6 +346,7 @@ elif st.session_state['registered'] and df is None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
