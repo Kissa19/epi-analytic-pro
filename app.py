@@ -9,6 +9,8 @@ from scipy.stats import hypergeom
 from streamlit_gsheets import GSheetsConnection
 import plotly.express as px
 import requests
+import folium
+from streamlit_folium import
 
 # ==========================================
 # 1. CONFIGURATION
@@ -442,6 +444,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
