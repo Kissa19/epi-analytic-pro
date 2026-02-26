@@ -363,7 +363,6 @@ elif st.session_state['registered'] and df is not None:
     elif menu == "🗺️ Spot Map (Place)":
         st.title("🗺️ Spot Map - Advanced Visualization")
         
-        # 1. ค้นหาคอลัมน์อัตโนมัติ
         lat_c = next((c for c in df.columns if c.lower() in ['latitude', 'lat', 'ละติจูด']), None)
         lon_c = next((c for c in df.columns if c.lower() in ['longitude', 'lon', 'ลองจิจูด']), None)
         age_c = next((c for c in df.columns if c.lower() in ['age', 'อายุ']), None)
@@ -377,7 +376,6 @@ elif st.session_state['registered'] and df is not None:
             st.sidebar.subheader("⚙️ การตั้งค่าแผนที่")
             map_choice = st.sidebar.radio("รูปแบบแผนที่:", ["Google Hybrid (ดาวเทียม)", "Google Roadmap", "OpenStreetMap"])
             
-            # ตัวเลือกแยกสี
             color_options = ["<สีแดงทั้งหมด>"]
             if sex_c: color_options.append("แยกตามเพศ")
             if age_c: color_options.append("แยกตามกลุ่มอายุ (<15 vs 15+)")
@@ -385,45 +383,46 @@ elif st.session_state['registered'] and df is not None:
             
             other_cols = [c for c in df.columns if c not in [lat_c, lon_c, age_c, sex_c, class_c]]
             color_by = st.sidebar.selectbox("เลือกตัวแปรเพื่อแยกสีจุด:", color_options + other_cols)
-            
             rad = st.sidebar.selectbox("รัศมีวงรอบ (Buffer):", [0, 100, 200, 500], index=1)
 
-            # --- ส่วนจัดการสีและ Legend ---
-            legend_dict = {} # เก็บข้อมูลสีไว้ทำ Legend
+            # --- 1. เตรียมสีและ Legend ไว้ก่อน (Pre-calculate Legend) ---
+            legend_dict = {}
+            
+            if color_by == "<สีแดงทั้งหมด>":
+                legend_dict = {"ผู้ป่วยทุกราย": "red"}
+            elif color_by == "แยกตามเพศ":
+                legend_dict = {"ชาย (Male)": "blue", "หญิง (Female)": "deeppink", "ไม่ระบุ": "gray"}
+            elif color_by == "แยกตามกลุ่มอายุ (<15 vs 15+)":
+                legend_dict = {"น้อยกว่า 15 ปี": "green", "15 ปีขึ้นไป": "orange", "ไม่ทราบอายุ": "gray"}
+            else:
+                # กรณีเลือกคอลัมน์อื่นๆ สร้างสีตามค่าที่ไม่ซ้ำอัตโนมัติ
+                unique_vals = sorted(df_m[color_by].unique().astype(str))
+                colors_list = ['#E6194B', '#3CB44B', '#FFE119', '#4363D8', '#F58231', '#911EB4', '#46F0F0', '#F032E6', '#BCF60C']
+                legend_dict = {v: colors_list[i % len(colors_list)] for i, v in enumerate(unique_vals)}
 
+            # --- 2. ฟังก์ชันเลือกสีสำหรับแต่ละจุด ---
             def get_marker_color(row, mode):
-                nonlocal legend_dict
-                if mode == "<สีแดงทั้งหมด>":
-                    legend_dict = {"ผู้ป่วยทุกราย": "red"}
-                    return "red"
-                
+                if mode == "<สีแดงทั้งหมด>": return "red"
                 elif mode == "แยกตามเพศ":
                     val = str(row.get(sex_c, '')).strip()
-                    legend_dict = {"ชาย (Male)": "blue", "หญิง (Female)": "deeppink", "ไม่ระบุ": "gray"}
-                    return "blue" if 'ชาย' in val or 'M' in val.upper() else "deeppink" if 'หญิง' in val or 'F' in val.upper() else "gray"
-                
+                    if 'ชาย' in val or 'M' in val.upper(): return "blue"
+                    if 'หญิง' in val or 'F' in val.upper(): return "deeppink"
+                    return "gray"
                 elif mode == "แยกตามกลุ่มอายุ (<15 vs 15+)":
-                    legend_dict = {"น้อยกว่า 15 ปี": "green", "15 ปีขึ้นไป": "orange", "ไม่ทราบอายุ": "gray"}
                     try:
                         val = float(row.get(age_c, 0))
                         return "green" if val < 15 else "orange"
                     except: return "gray"
-                
                 else:
-                    # สำหรับตัวแปรอื่นๆ (Dynamic Legend)
-                    unique_vals = sorted(df_m[mode].unique().astype(str))
-                    colors = ['#E6194B', '#3CB44B', '#FFE119', '#4363D8', '#F58231', '#911EB4', '#46F0F0', '#F032E6', '#BCF60C']
-                    color_map = {v: colors[i % len(colors)] for i, v in enumerate(unique_vals)}
-                    legend_dict = color_map
-                    return color_map.get(str(row.get(mode, '')), "gray")
+                    return legend_dict.get(str(row.get(mode, '')), "gray")
 
-            # --- สร้างแผนที่ ---
+            # --- 3. สร้างแผนที่ ---
             tiles_url = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}' if "Hybrid" in map_choice else \
                         'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}' if "Roadmap" in map_choice else 'OpenStreetMap'
             
             m = folium.Map(location=[df_m[lat_c].mean(), df_m[lon_c].mean()], zoom_start=16, tiles=tiles_url, attr='Google')
 
-            # วาดจุด (เรียกฟังก์ชันสี)
+            # วาดจุดลงบนแผนที่
             for idx, r in df_m.iterrows():
                 dot_color = get_marker_color(r, color_by)
                 folium.CircleMarker(
@@ -435,10 +434,10 @@ elif st.session_state['registered'] and df is not None:
                 if rad > 0:
                     folium.Circle([r[lat_c], r[lon_c]], radius=rad, color='blue', fill=True, fill_opacity=0.05, weight=1).add_to(m)
 
-            # --- แสดงผลแผนที่ ---
+            # แสดงผล
             folium_static(m, width=1000, height=600)
 
-            # --- [จุดสำคัญ] แสดง Legend (คำอธิบายสัญลักษณ์) ---
+            # --- 4. แสดง Legend ใน Sidebar ---
             st.sidebar.markdown("---")
             st.sidebar.subheader("📍 คำอธิบายสัญลักษณ์ (Legend)")
             
@@ -452,15 +451,15 @@ elif st.session_state['registered'] and df is not None:
                 """
             legend_html += "</div>"
             st.sidebar.markdown(legend_html, unsafe_allow_html=True)
-
-            if color_by != "<สีแดงทั้งหมด>":
-                st.info(f"💡 แผนที่กำลังแสดงข้อมูลแยกตาม: **{color_by}**")
+        else:
+            st.error("⚠️ ไม่พบคอลัมน์พิกัดในข้อมูล")
 # ==========================================
 # 5. FOOTER
 # ==========================================
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
