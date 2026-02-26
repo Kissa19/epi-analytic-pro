@@ -7,4 +7,5 @@ plotly
 st-gsheets-connection
 folium
 streamlit-folium
+requests
 openpyxl
