@@ -281,6 +281,7 @@ elif st.session_state['registered'] and df is not None:
         tab1, tab2 = st.tabs(["📁 วิเคราะห์จากไฟล์ข้อมูล", "🔢 กรอกข้อมูลเอง (Manual 2x2)"])
 
         with tab1:
+            with tab1:
             st.subheader("📁 วิเคราะห์ปัจจัยเสี่ยงจากไฟล์ที่อัปโหลด")
             if df is not None:
                 out_v = st.selectbox("ตัวแปรตาม (Outcome)", df.columns, key="file_out")
@@ -288,28 +289,71 @@ elif st.session_state['registered'] and df is not None:
                 exp_list = st.multiselect("เลือกปัจจัยเสี่ยง", [c for c in df.columns if c != out_v], key="file_exp")
                 
                 if st.button("🚀 ประมวลผลจากไฟล์"):
+                    import math
+                    from scipy.stats import hypergeom
                     results = []
+                    
                     for exp_v in exp_list:
                         temp = df[[out_v, exp_v]].copy().dropna()
                         temp[out_v] = smart_map_variable(temp[out_v])
                         temp[exp_v] = smart_map_variable(temp[exp_v])
                         temp = temp[temp[out_v].isin([1, 0]) & temp[exp_v].isin([1, 0])]
+                        
                         if len(temp) > 0:
                             a = len(temp[(temp[exp_v]==1) & (temp[out_v]==1)])
                             b = len(temp[(temp[exp_v]==1) & (temp[out_v]==0)])
                             c = len(temp[(temp[exp_v]==0) & (temp[out_v]==1)])
                             d = len(temp[(temp[exp_v]==0) & (temp[out_v]==0)])
+                            
                             try:
-                                m_label, measure = ("OR", (a*d)/(b*c)) if "Case-control" in design else ("RR", (a/(a+b))/(c/(c+d)))
-                                se = np.sqrt(1/a + 1/b + 1/c + 1/d)
-                                ci_l, ci_u = np.exp(np.log(measure)-1.96*se), np.exp(np.log(measure)+1.96*se)
-                                p_val = calculate_mid_p(a, b, c, d)
-                                results.append({"ปัจจัย": exp_v, "ป่วย(+)": a, "ไม่ป่วย(+)": b, "ป่วย(-)": c, "ไม่ป่วย(-)": d, m_label: measure, "95% CI Lower": ci_l, "95% CI Upper": ci_u, "Mid-P": p_val})
+                                # 1. คำนวณ Point Estimate และ 95% CI (Taylor Series)
+                                if "Case-control" in design:
+                                    m_label = "OR"
+                                    measure = (a * d) / (b * c) if (b * c) > 0 else 0
+                                    se_ln = math.sqrt(1/a + 1/b + 1/c + 1/d) if a*b*c*d > 0 else 0
+                                else:
+                                    m_label = "RR"
+                                    measure = (a / (a + b)) / (c / (c + d)) if (a+b) > 0 and (c+d) > 0 else 0
+                                    se_ln = math.sqrt((1/a - 1/(a+b)) + (1/c - 1/(c+d))) if a*c > 0 else 0
+                                
+                                ci_l = math.exp(math.log(measure) - 1.96 * se_ln) if measure > 0 else 0
+                                ci_u = math.exp(math.log(measure) + 1.96 * se_ln) if measure > 0 else 0
+                                
+                                # 2. คำนวณ Mid-P Exact P-value (2-tail)
+                                def calc_mid_p(a, b, c, d):
+                                    n = a + b + c + d
+                                    k = a + c # total sick
+                                    m = a + b # total exposed
+                                    if n == 0 or k == 0 or m == 0: return 1.0
+                                    p_obs = hypergeom.pmf(a, n, k, m)
+                                    p_lower = hypergeom.cdf(a, n, k, m)
+                                    p_upper = hypergeom.sf(a-1, n, k, m)
+                                    return 2 * (min(p_lower, p_upper) - 0.5 * p_obs)
+
+                                mid_p_val = calc_mid_p(a, b, c, d)
+                                
+                                results.append({
+                                    "ปัจจัย": exp_v, 
+                                    "ป่วย(+)": a, "ไม่ป่วย(+)": b, 
+                                    "ป่วย(-)": c, "ไม่ป่วย(-)": d, 
+                                    m_label: measure, 
+                                    "95% CI Lower": ci_l, 
+                                    "95% CI Upper": ci_u, 
+                                    "Mid-P (2-tail)": max(mid_p_val, 0)
+                                })
                             except: pass
+                            
                     if results:
-                        st.dataframe(pd.DataFrame(results).style.format({m_label: "{:.2f}", "95% CI Lower": "{:.2f}", "95% CI Upper": "{:.2f}", "Mid-P": "{:.4f}"}))
-            else:
-                st.warning("⚠️ กรุณาอัปโหลดไฟล์ข้อมูลก่อนใช้งานในแท็บนี้")
+                        res_df = pd.DataFrame(results)
+                        st.success(f"✅ ประมวลผลสำเร็จ (ใช้สูตร Taylor Series และ Mid-P ตามมาตรฐาน OpenEpi)")
+                        st.dataframe(res_df.style.format({
+                            m_label: "{:.2f}", 
+                            "95% CI Lower": "{:.3f}", 
+                            "95% CI Upper": "{:.3f}", 
+                            "Mid-P (2-tail)": "{:.7f}"
+                        }))
+                    else:
+                        st.warning("⚠️ ไม่พบข้อมูลที่เพียงพอในการวิเคราะห์")
 
         with tab2:
             st.subheader("🔢 Manual 2x2 Table Calculator")
@@ -604,6 +648,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
