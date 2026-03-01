@@ -347,8 +347,10 @@ elif st.session_state['registered'] and df is not None:
             if st.button("📈 คำนวณผล 2x2 Table"):
                 if (ma + mb + mc + md) > 0:
                     import math
+                    from scipy.stats import chi2_contingency, hypergeom
+                    
                     try:
-                        # คำนวณค่าหลัก
+                        # --- คำนวณค่า Point Estimate ---
                         if "Case-Control" in manual_design:
                             res_label = "Odds Ratio (OR)"
                             val = (ma * md) / (mb * mc) if (mb * mc) > 0 else 0
@@ -356,30 +358,57 @@ elif st.session_state['registered'] and df is not None:
                             res_label = "Relative Risk (RR)"
                             val = (ma / (ma + mb)) / (mc / (mc + md)) if (ma + mb) > 0 and (mc + md) > 0 else 0
                         
-                        # คำนวณ 95% CI (Woolf's method)
-                        se_ln = math.sqrt((1/ma if ma>0 else 0) + (1/mb if mb>0 else 0) + (1/mc if mc>0 else 0) + (1/md if md>0 else 0))
+                        # --- คำนวณ 95% CI แบบ Taylor Series (มาตรฐาน OpenEpi) ---
+                        if "Case-Control" in manual_design:
+                            # Taylor Series for OR
+                            se_ln = math.sqrt(1/ma + 1/mb + 1/mc + 1/md)
+                        else:
+                            # Taylor Series for RR
+                            se_ln = math.sqrt((1/ma - 1/(ma+mb)) + (1/mc - 1/(mc+md)))
+                            
                         lower = math.exp(math.log(val) - 1.96 * se_ln) if val > 0 else 0
                         upper = math.exp(math.log(val) + 1.96 * se_ln) if val > 0 else 0
                         
-                        # คำนวณ Chi-Square (Yates)
-                        n_total = ma + mb + mc + md
-                        chi2 = (n_total * (abs(ma*md - mb*mc) - n_total/2)**2) / ((ma+mb)*(mc+md)*(ma+mc)*(mb+md)) if (ma+mb)*(mc+md)*(ma+mc)*(mb+md) > 0 else 0
+                        # --- คำนวณ Chi-Square (Yates และ Uncorrected) ---
+                        obs = np.array([[ma, mb], [mc, md]])
+                        chi2_uncorrected, p_uncor, _, _ = chi2_contingency(obs, correction=False)
+                        chi2_yates, p_yates, _, _ = chi2_contingency(obs, correction=True)
                         
-                        # แสดงผล
+                        # --- คำนวณ Mid-P Exact P-value (2-tail) ---
+                        def get_mid_p(a, b, c, d):
+                            n = a + b + c + d
+                            k = a + c # total sick
+                            m = a + b # total exposed
+                            p_obs = hypergeom.pmf(a, n, k, m)
+                            # Mid-P = P(extreme) - 0.5 * P(observed)
+                            p_lower = hypergeom.cdf(a, n, k, m)
+                            p_upper = hypergeom.sf(a-1, n, k, m)
+                            return 2 * (min(p_lower, p_upper) - 0.5 * p_obs)
+
+                        mid_p_val = get_mid_p(ma, mb, mc, md)
+
+                        # --- แสดงผลลัพธ์ ---
                         st.markdown("---")
-                        r1, r2, r3 = st.columns(3)
-                        r1.metric(res_label, f"{val:.2f}")
-                        r2.write(f"**95% Confidence Interval**")
-                        r2.write(f"{lower:.2f} - {upper:.2f}")
-                        r3.metric("Chi-Square (Yates)", f"{chi2:.2f}")
+                        col_res1, col_res2 = st.columns(2)
                         
-                        if chi2 > 3.84:
-                            st.success("✨ มีความสัมพันธ์อย่างมีนัยสำคัญทางสถิติ (p < 0.05)")
-                        else:
-                            st.secondary("ไม่พบความสัมพันธ์อย่างมีนัยสำคัญทางสถิติ")
+                        with col_res1:
+                            st.metric(res_label, f"{val:.2f}")
+                            st.write(f"**95% CI (Taylor Series):**")
+                            st.write(f"👉 {lower:.3f} - {upper:.3f}")
+                            st.caption("ค่านี้จะตรงกับผลลัพธ์ใน OpenEpi/Epi Info")
+
+                        with col_res2:
+                            st.write("**Statistical Significance**")
+                            st.write(f"**Yates chi-square:** {chi2_yates:.3f}")
+                            st.write(f"**Mid-P exact (2-tail):** {max(mid_p_val, 0.0000001):.7f}")
                             
+                            if mid_p_val < 0.05:
+                                st.success("✨ มีนัยสำคัญทางสถิติ (p < 0.05)")
+                            else:
+                                st.error("❌ ไม่มีนัยสำคัญทางสถิติ")
+
                     except Exception as e:
-                        st.error("ไม่สามารถคำนวณได้ กรุณาตรวจสอบว่าไม่มีค่าที่เป็น 0 ในตัวหาร")
+                        st.error(f"⚠️ เกิดข้อผิดพลาดในการคำนวณ: {e}")
                 else:
                     st.warning("กรุณากรอกตัวเลขจำนวนในตาราง 2x2")
    
@@ -575,6 +604,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
