@@ -43,6 +43,7 @@ if not st.session_state['registered']:
 else:
     menu = st.sidebar.radio(
         "เลือกหัวข้อการวิเคราะห์", 
+        ["👥 ประชากรและอัตราป่วย (Attack Rate)",
         ["👤 บุคคล (Person)", 
          "📊 Epidemic Curve (Time)", 
          "🗺️ Spot Map (Place)",
@@ -163,6 +164,97 @@ if menu == "📝 ลงทะเบียนใช้งาน" or menu == "📝
 elif st.session_state['registered'] and df is not None:
     total_n = len(df)
 
+    # --- เมนูใหม่: ประชากรและ Attack Rate ---
+    if menu == "👥 ประชากรและอัตราป่วย (Attack Rate)":
+        st.title("👥 Denominator & Attack Rate Analysis")
+        st.info("กรุณาระบุจำนวนประชากรกลุ่มเสี่ยง (Population at Risk) เพื่อคำนวณอัตราป่วย")
+
+        # 1. ค้นหาคอลัมน์อัตโนมัติ
+        def find_col(possible_names):
+            return next((c for c in df.columns if any(p in c.lower() for p in possible_names)), None)
+        
+        sex_c = find_col(['sex', 'gender', 'เพศ'])
+        age_c = find_col(['age', 'อายุ'])
+
+        # 2. ส่วนการกรอกข้อมูลประชากร (Denominator)
+        st.subheader("1. ระบุจำนวนประชากรกลุ่มเสี่ยงแยกตามกลุ่ม")
+        col_p1, col_p2 = st.columns(2)
+        
+        with col_p1:
+            st.markdown("**แยกตามเพศ**")
+            pop_male = st.number_input("จำนวนประชากรชายทั้งหมด", min_value=1, value=100)
+            pop_female = st.number_input("จำนวนประชากรหญิงทั้งหมด", min_value=1, value=100)
+            total_pop_sex = pop_male + pop_female
+            st.write(f"รวมประชากร (เพศ): {total_pop_sex:,}")
+
+        with col_p2:
+            st.markdown("**แยกตามกลุ่มอายุ (มาตรฐาน)**")
+            # สร้าง List กลุ่มอายุมาตรฐาน
+            age_labels = ['0-4','5-14','15-24','25-34','35-44','45-54','55-64','65+']
+            pop_age = {}
+            for label in age_labels:
+                pop_age[label] = st.number_input(f"ประชากรกลุ่มอายุ {label}", min_value=0, value=0)
+            total_pop_age = sum(pop_age.values())
+            st.write(f"รวมประชากร (อายุ): {total_pop_age:,}")
+
+        # 3. คำนวณ Attack Rate
+        if st.button("📈 คำนวณ Attack Rate"):
+            st.markdown("---")
+            st.subheader("📊 ผลการคำนวณ Attack Rate")
+            
+            # --- Overall Attack Rate ---
+            overall_ar = (len(df) / total_pop_sex * 100) if total_pop_sex > 0 else 0
+            st.metric("Overall Attack Rate (อัตราป่วยรวม)", f"{overall_ar:.2f} %", f"Cases: {len(df)}")
+
+            res_col1, res_col2 = st.columns(2)
+            
+            # --- Sex-Specific Attack Rate ---
+            with res_col1:
+                st.markdown("**Sex-Specific Attack Rate**")
+                if sex_c:
+                    # ปรับรหัสเพศให้เป็น ชาย/หญิง ก่อนนับ
+                    df['sex_temp'] = df[sex_c].astype(str).str.strip().replace({'1':'ชาย','2':'หญิง','1.0':'ชาย','2.0':'หญิง'})
+                    male_cases = len(df[df['sex_temp'] == 'ชาย'])
+                    female_cases = len(df[df['sex_temp'] == 'หญิง'])
+                    
+                    ar_male = (male_cases / pop_male * 100)
+                    ar_female = (female_cases / pop_female * 100)
+                    
+                    ar_sex_df = pd.DataFrame({
+                        "เพศ": ["ชาย", "หญิง"],
+                        "จำนวนป่วย (n)": [male_cases, female_cases],
+                        "ประชากร (N)": [pop_male, pop_female],
+                        "Attack Rate (%)": [ar_male, ar_female]
+                    })
+                    st.table(ar_sex_df.style.format({"Attack Rate (%)": "{:.2f}"}))
+                else:
+                    st.warning("ไม่พบคอลัมน์เพศในไฟล์ข้อมูล")
+
+            # --- Age-Specific Attack Rate ---
+            with res_col2:
+                st.markdown("**Age-Specific Attack Rate**")
+                if age_c:
+                    # จัดกลุ่มอายุใน df ให้ตรงกับ labels
+                    df['age_grp_temp'] = pd.cut(df[age_c], bins=[0,5,15,25,35,45,55,65,120], labels=age_labels, right=False)
+                    age_cases = df['age_grp_temp'].value_counts().reindex(age_labels, fill_value=0)
+                    
+                    age_ar_data = []
+                    for label in age_labels:
+                        cases = age_cases[label]
+                        pop = pop_age[label]
+                        ar = (cases / pop * 100) if pop > 0 else 0
+                        age_ar_data.append({"กลุ่มอายุ": label, "จำนวนป่วย (n)": cases, "ประชากร (N)": pop, "Attack Rate (%)": ar})
+                    
+                    st.table(pd.DataFrame(age_ar_data).style.format({"Attack Rate (%)": "{:.2f}"}))
+                else:
+                    st.warning("ไม่พบคอลัมน์อายุในไฟล์ข้อมูล")
+            
+            # กราฟเปรียบเทียบ Attack Rate
+            st.subheader("🖼️ Attack Rate Comparison")
+            fig_ar = px.bar(pd.DataFrame(age_ar_data), x="กลุ่มอายุ", y="Attack Rate (%)", 
+                           title="Age-Specific Attack Rate (%)", text_auto='.2f')
+            st.plotly_chart(fig_ar, use_container_width=True)
+    
     # 1. พรรณนา (Descriptive)
     if menu == "👤 บุคคล (Person)":
         st.title("👤 การกระจายตามบุคคล")
@@ -647,6 +739,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
