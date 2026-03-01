@@ -272,36 +272,117 @@ elif st.session_state['registered'] and df is not None:
                     
                     st.plotly_chart(fig, use_container_width=True)
                     st.success(f"✅ แสดง Epidemic Curve ราย {bin_unit} เรียบร้อยแล้ว (รวม Padding ก่อน-หลัง)")
-                    
-    # 3. Crude Analysis
-    elif menu == "🔬 Bivariate Analysis (OR/RR)":
-        st.title("🔬 Bivariate Analysis (1=Yes, 0=No)")
-        out_v = st.selectbox("ตัวแปรตาม (Outcome)", df.columns)
-        design = st.radio("ประเภทการศึกษา", ["Case-control Study (OR)", "Cohort Study (RR)"])
-        exp_list = st.multiselect("เลือกปัจจัยเสี่ยง", [c for c in df.columns if c != out_v])
-        
-        if st.button("🚀 ประมวลผล"):
-            results = []
-            for exp_v in exp_list:
-                temp = df[[out_v, exp_v]].copy().dropna()
-                temp[out_v] = smart_map_variable(temp[out_v])
-                temp[exp_v] = smart_map_variable(temp[exp_v])
-                temp = temp[temp[out_v].isin([1, 0]) & temp[exp_v].isin([1, 0])]
-                if len(temp) > 0:
-                    a = len(temp[(temp[exp_v]==1) & (temp[out_v]==1)])
-                    b = len(temp[(temp[exp_v]==1) & (temp[out_v]==0)])
-                    c = len(temp[(temp[exp_v]==0) & (temp[out_v]==1)])
-                    d = len(temp[(temp[exp_v]==0) & (temp[out_v]==0)])
-                    try:
-                        m_label, measure = ("OR", (a*d)/(b*c)) if "Case-control" in design else ("RR", (a/(a+b))/(c/(c+d)))
-                        se = np.sqrt(1/a + 1/b + 1/c + 1/d)
-                        ci_l, ci_u = np.exp(np.log(measure)-1.96*se), np.exp(np.log(measure)+1.96*se)
-                        p_val = calculate_mid_p(a, b, c, d)
-                        results.append({"ปัจจัย": exp_v, "ป่วย(+)": a, "ไม่ป่วย(+)": b, "ป่วย(-)": c, "ไม่ป่วย(-)": d, m_label: measure, "95% CI Lower": ci_l, "95% CI Upper": ci_u, "Mid-P": p_val})
-                    except: pass
-            if results:
-                st.dataframe(pd.DataFrame(results).style.format({m_label: "{:.2f}", "95% CI Lower": "{:.2f}", "95% CI Upper": "{:.2f}", "Mid-P": "{:.4f}"}))
 
+    # 3. Crude Analysis (Bivariate + Manual 2x2)
+    elif menu == "🔬 Bivariate Analysis (OR/RR)":
+        st.title("🔬 Bivariate Analysis & 2x2 Table")
+        
+        # สร้าง Tab เพื่อแยกการวิเคราะห์แบบไฟล์ และแบบกรอกเอง
+        tab1, tab2 = st.tabs(["📁 วิเคราะห์จากไฟล์ข้อมูล", "🔢 กรอกข้อมูลเอง (Manual 2x2)"])
+
+        with tab1:
+            st.subheader("📁 วิเคราะห์ปัจจัยเสี่ยงจากไฟล์ที่อัปโหลด")
+            if df is not None:
+                out_v = st.selectbox("ตัวแปรตาม (Outcome)", df.columns, key="file_out")
+                design = st.radio("ประเภทการศึกษา", ["Case-control Study (OR)", "Cohort Study (RR)"], key="file_design")
+                exp_list = st.multiselect("เลือกปัจจัยเสี่ยง", [c for c in df.columns if c != out_v], key="file_exp")
+                
+                if st.button("🚀 ประมวลผลจากไฟล์"):
+                    results = []
+                    for exp_v in exp_list:
+                        temp = df[[out_v, exp_v]].copy().dropna()
+                        temp[out_v] = smart_map_variable(temp[out_v])
+                        temp[exp_v] = smart_map_variable(temp[exp_v])
+                        temp = temp[temp[out_v].isin([1, 0]) & temp[exp_v].isin([1, 0])]
+                        if len(temp) > 0:
+                            a = len(temp[(temp[exp_v]==1) & (temp[out_v]==1)])
+                            b = len(temp[(temp[exp_v]==1) & (temp[out_v]==0)])
+                            c = len(temp[(temp[exp_v]==0) & (temp[out_v]==1)])
+                            d = len(temp[(temp[exp_v]==0) & (temp[out_v]==0)])
+                            try:
+                                m_label, measure = ("OR", (a*d)/(b*c)) if "Case-control" in design else ("RR", (a/(a+b))/(c/(c+d)))
+                                se = np.sqrt(1/a + 1/b + 1/c + 1/d)
+                                ci_l, ci_u = np.exp(np.log(measure)-1.96*se), np.exp(np.log(measure)+1.96*se)
+                                p_val = calculate_mid_p(a, b, c, d)
+                                results.append({"ปัจจัย": exp_v, "ป่วย(+)": a, "ไม่ป่วย(+)": b, "ป่วย(-)": c, "ไม่ป่วย(-)": d, m_label: measure, "95% CI Lower": ci_l, "95% CI Upper": ci_u, "Mid-P": p_val})
+                            except: pass
+                    if results:
+                        st.dataframe(pd.DataFrame(results).style.format({m_label: "{:.2f}", "95% CI Lower": "{:.2f}", "95% CI Upper": "{:.2f}", "Mid-P": "{:.4f}"}))
+            else:
+                st.warning("⚠️ กรุณาอัปโหลดไฟล์ข้อมูลก่อนใช้งานในแท็บนี้")
+
+        with tab2:
+            st.subheader("🔢 Manual 2x2 Table Calculator")
+            st.info("ใช้สำหรับคำนวณกรณีมีเพียงตัวเลขสรุป (Aggregated Data) โดยไม่ต้องอัปโหลดไฟล์")
+            
+            # 1. เลือกรูปแบบการศึกษา
+            manual_design = st.radio(
+                "รูปแบบการศึกษา (Study Design):",
+                ["Cohort Study (Relative Risk)", "Case-Control Study (Odds Ratio)"],
+                horizontal=True, key="man_design"
+            )
+
+            # 2. ส่วนการกรอกข้อมูล 2x2 Table
+            st.markdown("---")
+            c1, c2, c3 = st.columns([2, 1, 1])
+            
+            with c1:
+                st.write("") 
+                st.write("")
+                st.markdown("**Exposed (สัมผัสปัจจัย)**")
+                st.write("")
+                st.markdown("**Non-Exposed (ไม่สัมผัส)**")
+
+            with c2:
+                st.markdown("<center><b>Sick (ป่วย)</b></center>", unsafe_allow_html=True)
+                ma = st.number_input("Cell a", min_value=0, value=0, step=1, label_visibility="collapsed")
+                mc = st.number_input("Cell c", min_value=0, value=0, step=1, label_visibility="collapsed")
+
+            with c3:
+                st.markdown("<center><b>Not Sick (ไม่ป่วย)</b></center>", unsafe_allow_html=True)
+                mb = st.number_input("Cell b", min_value=0, value=0, step=1, label_visibility="collapsed")
+                md = st.number_input("Cell d", min_value=0, value=0, step=1, label_visibility="collapsed")
+
+            # 3. ส่วนการคำนวณสถิติ
+            if st.button("📈 คำนวณผล 2x2 Table"):
+                if (ma + mb + mc + md) > 0:
+                    import math
+                    try:
+                        # คำนวณค่าหลัก
+                        if "Case-Control" in manual_design:
+                            res_label = "Odds Ratio (OR)"
+                            val = (ma * md) / (mb * mc) if (mb * mc) > 0 else 0
+                        else:
+                            res_label = "Relative Risk (RR)"
+                            val = (ma / (ma + mb)) / (mc / (mc + md)) if (ma + mb) > 0 and (mc + md) > 0 else 0
+                        
+                        # คำนวณ 95% CI (Woolf's method)
+                        se_ln = math.sqrt((1/ma if ma>0 else 0) + (1/mb if mb>0 else 0) + (1/mc if mc>0 else 0) + (1/md if md>0 else 0))
+                        lower = math.exp(math.log(val) - 1.96 * se_ln) if val > 0 else 0
+                        upper = math.exp(math.log(val) + 1.96 * se_ln) if val > 0 else 0
+                        
+                        # คำนวณ Chi-Square (Yates)
+                        n_total = ma + mb + mc + md
+                        chi2 = (n_total * (abs(ma*md - mb*mc) - n_total/2)**2) / ((ma+mb)*(mc+md)*(ma+mc)*(mb+md)) if (ma+mb)*(mc+md)*(ma+mc)*(mb+md) > 0 else 0
+                        
+                        # แสดงผล
+                        st.markdown("---")
+                        r1, r2, r3 = st.columns(3)
+                        r1.metric(res_label, f"{val:.2f}")
+                        r2.write(f"**95% Confidence Interval**")
+                        r2.write(f"{lower:.2f} - {upper:.2f}")
+                        r3.metric("Chi-Square (Yates)", f"{chi2:.2f}")
+                        
+                        if chi2 > 3.84:
+                            st.success("✨ มีความสัมพันธ์อย่างมีนัยสำคัญทางสถิติ (p < 0.05)")
+                        else:
+                            st.secondary("ไม่พบความสัมพันธ์อย่างมีนัยสำคัญทางสถิติ")
+                            
+                    except Exception as e:
+                        st.error("ไม่สามารถคำนวณได้ กรุณาตรวจสอบว่าไม่มีค่าที่เป็น 0 ในตัวหาร")
+                else:
+                    st.warning("กรุณากรอกตัวเลขจำนวนในตาราง 2x2")
+   
     # 4. Adjusted Analysis
     elif menu == "🧬 Multiple Logistic Regression (Adjusted)":
         st.title("🧬 Multiple Logistic Regression (Adjusted)")
@@ -494,6 +575,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
