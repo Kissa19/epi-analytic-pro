@@ -44,7 +44,7 @@ else:
     menu = st.sidebar.radio(
         "เลือกหัวข้อการวิเคราะห์", 
         ["👥 ประชากรและอัตราป่วย (Attack Rate)",
-        ["👤 บุคคล (Person)", 
+         "👤 บุคคล (Person)", 
          "📊 Epidemic Curve (Time)", 
          "🗺️ Spot Map (Place)",
          "🔬 Bivariate Analysis (OR/RR)", 
@@ -739,6 +739,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
