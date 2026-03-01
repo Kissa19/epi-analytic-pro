@@ -166,7 +166,7 @@ elif st.session_state['registered'] and df is not None:
 
     # --- เมนูใหม่: ประชากรและ Attack Rate ---
     if menu == "👥 ประชากรและอัตราป่วย (Attack Rate)":
-        st.title("👥 Denominator & Attack Rate Analysis")
+        st.title("👥 ประชากรและอัตราป่วย (Attack Rate)")
         st.info("กรุณาระบุจำนวนประชากรกลุ่มเสี่ยง (Population at Risk) เพื่อคำนวณอัตราป่วย")
 
         # 1. ค้นหาคอลัมน์อัตโนมัติ
@@ -739,6 +739,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
