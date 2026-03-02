@@ -595,7 +595,7 @@ elif st.session_state['registered'] and df is not None:
         
         out_v = st.selectbox("ตัวแปรตาม (Outcome)", df.columns, key="log_out")
         exp_v = st.selectbox("ปัจจัยหลัก (Exposure)", [c for c in df.columns if c != out_v], key="log_exp")
-        adj_v = st.multiselect("ตัวแปรกวน (Covariates)", [c for c in df.columns if c not in [out_v, exp_v]], key="log_adj")
+        adj_v = st.multiselect("ตัวแปรกวน (Confounding)", [c for c in df.columns if c not in [out_v, exp_v]], key="log_adj")
         
         if st.button("🚀 ประมวลผล Logistic Regression"):
             try:
@@ -780,6 +780,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
