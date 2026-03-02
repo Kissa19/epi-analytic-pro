@@ -29,7 +29,7 @@ st.markdown(
     <style>
         /* 1. เปลี่ยนสีพื้นหลังของ Sidebar เป็นสีเขียว */
         [data-testid="stSidebar"] {
-            background-color: #2E7D32; /* สีเขียวเข้มแบบสาธารณสุข */
+            background-color: #006400; /* สีเขียวเข้มแบบสาธารณสุข */
         }
 
         /* 2. เปลี่ยนสีตัวอักษรทั้งหมดใน Sidebar เป็นสีขาว */
@@ -780,6 +780,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
