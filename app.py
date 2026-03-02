@@ -71,16 +71,28 @@ if 'registered' not in st.session_state:
 # ==========================================
 # 3. SIDEBAR NAVIGATION & LOGO
 # ==========================================
+# ลิงก์โลโก้กระทรวงสาธารณสุขอย่างเป็นทางการ
+moph_logo_url = "https://www.moph.go.th/images/logo/moph-logo.png"
+
+# แสดงโลโก้ใน Sidebar
 try:
-    st.sidebar.image("สำนักงานป้องกันควบคุมโรคที่8.png", width=150)
+    # พยายามแสดงโลโก้จาก URL โดยตรง (แนะนำวิธีนี้เพราะไม่ต้องเก็บไฟล์ในเครื่อง)
+    st.sidebar.image(moph_logo_url, width=150)
 except:
+    # หาก URL มีปัญหา ให้แสดงเป็นไอคอนและข้อความแทน
     st.sidebar.title("🏥 สำนักงานป้องกันควบคุมโรคที่ 8 จังหวัดอุดรธานี")
+
+# ส่วนหัวข้อเมนู (ใช้สีขาวเพื่อให้ตัดกับพื้นหลังสีเขียวที่ตั้งค่าไว้)
+st.sidebar.markdown(
+    "<h3 style='color: white; text-align: center;'>Epi-Analytic Menu</h3>", 
+    unsafe_allow_html=True
+)
 
 st.sidebar.title("🏥 Epi-Analytic Menu")
 
 if not st.session_state['registered']:
     menu = "📝 ลงทะเบียนใช้งาน"
-    st.sidebar.warning("⚠️ โปรดลงทะเบียนเพื่อปลดล็อกเมนูวิเคราะห์   🚫 คำเตือนความปลอดภัย: โปรดตรวจสอบไฟล์ Excel และลบคอลัมน์ ชื่อ-นามสกุล หรือข้อมูลระบุตัวตนออกก่อนอัปโหลดเข้าสู่ระบบทุกครั้ง")
+    st.sidebar.warning("⚠️ โปรดลงทะเบียนเพื่อปลดล็อกเมนูวิเคราะห์ 🚫 คำเตือนความปลอดภัย: โปรดตรวจสอบไฟล์ Excel และลบคอลัมน์ ชื่อ-นามสกุล หรือข้อมูลระบุตัวตนออกก่อนอัปโหลดเข้าสู่ระบบทุกครั้ง")
 else:
     menu = st.sidebar.radio(
         "เลือกหัวข้อการวิเคราะห์", 
@@ -780,6 +792,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
