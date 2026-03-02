@@ -89,7 +89,7 @@ else:
          "📊 Epidemic Curve (Time)", 
          "🗺️ Spot Map (Place)",
          "🔬 Bivariate Analysis (OR/RR)", 
-         "🧬 Multiple Logistic Regression (Adjusted)",
+         "🧬 Multiple Logistic Regression (Adjusted OR; AOR)",
          "📝 ข้อมูลการลงทะเบียน (แก้ไข)"]
     )
 
@@ -589,8 +589,8 @@ elif st.session_state['registered'] and df is not None:
                     st.warning("กรุณากรอกตัวเลขจำนวนในตาราง 2x2")
    
     # 4. Adjusted Analysis
-    elif menu == "🧬 Multiple Logistic Regression (Adjusted)":
-        st.title("🧬 Multiple Logistic Regression (Adjusted)")
+    elif menu == "🧬 Multiple Logistic Regression (Adjusted OR; AOR)":
+        st.title("🧬 Multiple Logistic Regression (Adjusted OR; AOR)")
         st.markdown("วิเคราะห์ปัจจัยเสี่ยงโดยควบคุมตัวแปรกวน (แสดงค่า AOR และ 95% CI)")
         
         out_v = st.selectbox("ตัวแปรตาม (Outcome)", df.columns, key="log_out")
@@ -780,6 +780,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
