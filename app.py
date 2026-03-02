@@ -71,16 +71,16 @@ if 'registered' not in st.session_state:
 # ==========================================
 # 3. SIDEBAR NAVIGATION & LOGO
 # ==========================================
-# ลิงก์โลโก้กระทรวงสาธารณสุขอย่างเป็นทางการ
-moph_logo_url = "https://www.moph.go.th/images/logo/moph-logo.png"
-
-# แสดงโลโก้ใน Sidebar
+# แสดงโลโก้ สคร.8 (ใช้ไฟล์ที่คุณอัปโหลดขึ้นมา)
 try:
-    # พยายามแสดงโลโก้จาก URL โดยตรง (แนะนำวิธีนี้เพราะไม่ต้องเก็บไฟล์ในเครื่อง)
-    st.sidebar.image(moph_logo_url, width=150)
+    # แนะนำให้ตรวจสอบว่าชื่อไฟล์ตรงกับที่อัปโหลดมาเป๊ะๆ (รวมสระและนามสกุล)
+    st.sidebar.image("สำนักงานป้องกันควบคุมโรคที่8.png", width=180)
 except:
-    # หาก URL มีปัญหา ให้แสดงเป็นไอคอนและข้อความแทน
-    st.sidebar.title("🏥 สำนักงานป้องกันควบคุมโรคที่ 8 จังหวัดอุดรธานี")
+    # หากหาไฟล์ไม่เจอ ให้โชว์ไอคอนแทน
+    st.sidebar.title("🏥 ODPC8 Udon Thani")
+
+st.sidebar.markdown("<hr>", unsafe_allow_html=True)
+st.sidebar.title("🏥 Epi-Analytic Menu")
 
 # ส่วนหัวข้อเมนู (ใช้สีขาวเพื่อให้ตัดกับพื้นหลังสีเขียวที่ตั้งค่าไว้)
 st.sidebar.markdown(
@@ -792,6 +792,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
