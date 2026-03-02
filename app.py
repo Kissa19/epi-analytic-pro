@@ -73,7 +73,7 @@ if 'registered' not in st.session_state:
 # แสดงโลโก้ สคร.8 (ใช้ไฟล์ที่คุณอัปโหลดขึ้นมา)
 try:
     # แนะนำให้ตรวจสอบว่าชื่อไฟล์ตรงกับที่อัปโหลดมาเป๊ะๆ (รวมสระและนามสกุล)
-    st.sidebar.image("odpc8_logo.png", , use_container_width=True)
+    st.sidebar.image("odpc8_logo.png", use_container_width=True)
 except:
     # หากหาไฟล์ไม่เจอ ให้โชว์ไอคอนแทน
     st.sidebar.title("🏥 ODPC8 Udon Thani")
@@ -784,6 +784,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
