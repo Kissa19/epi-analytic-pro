@@ -79,7 +79,6 @@ except:
     st.sidebar.title("🏥 ODPC8 Udon Thani")
 
 st.sidebar.markdown("---")
-)
 
 st.sidebar.title("🏥 Epi-Analytic Menu")
 
@@ -785,6 +784,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
