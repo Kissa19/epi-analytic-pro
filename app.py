@@ -27,35 +27,34 @@ import streamlit as st
 st.markdown(
     """
     <style>
-        /* 1. เปลี่ยนสีพื้นหลังของ Sidebar เป็นสีเขียว */
+        /* 1. ปรับสีพื้นหลัง Sidebar เป็นสีเทาจางๆ */
         [data-testid="stSidebar"] {
-            background-color: #006400; /* สีเขียวเข้มแบบสาธารณสุข */
+            background-color: #F8F9FB !important; /* สีเทาอ่อนสะอาดตา */
+            border-right: 1px solid #E0E0E0;
         }
 
-        /* 2. เปลี่ยนสีตัวอักษรทั้งหมดใน Sidebar เป็นสีขาว */
-        [data-testid="stSidebar"] .stText, 
-        [data-testid="stSidebar"] .stMarkdown, 
+        /* 2. ปรับสีตัวอักษร หัวข้อ และ Label เป็นสีดำ/เทาเข้ม */
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
         [data-testid="stSidebar"] label,
-        [data-testid="stSidebar"] .st-at,
-        [data-testid="stSidebar"] p {
-            color: white !important;
+        [data-testid="stSidebar"] h1,
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3,
+        [data-testid="stSidebar"] span,
+        [data-testid="stSidebar"] .st-at {
+            color: #31333F !important; /* สีดำมาตรฐาน Streamlit */
+            font-weight: 500;
         }
 
-        /* 3. ปรับสีหัวข้อ (Header) ใน Sidebar */
-        [data-testid="stSidebar"] h1, 
-        [data-testid="stSidebar"] h2, 
-        [data-testid="stSidebar"] h3 {
-            color: white !important;
+        /* 3. ปรับสีปุ่ม Radio (ตัวเลือกเมนู) ให้เป็นสีดำ */
+        [data-testid="stSidebar"] .st-bc, 
+        [data-testid="stSidebar"] .st-bd {
+            color: #31333F !important;
         }
 
-        /* 4. ปรับสี Icon (ถ้ามี) ให้เด่นขึ้นบนพื้นเขียว */
-        [data-testid="stSidebar"] .st-emotion-cache-16idsys p {
-            color: white !important;
-        }
-        
-        /* 5. ปรับสีวิทยุ (Radio Button) และ Checkbox */
-        [data-testid="stSidebar"] .st-bc {
-            color: white !important;
+        /* 4. ปรับแต่งให้โลโก้ดูคมชัด (ลดเงาหรือฟิลเตอร์ที่อาจรบกวน) */
+        [data-testid="stSidebar"] img {
+            object-fit: contain;
+            image-rendering: -webkit-optimize-contrast; /* ช่วยให้ภาพคมชัดขึ้นในบาง Browser */
         }
     </style>
     """,
@@ -74,17 +73,12 @@ if 'registered' not in st.session_state:
 # แสดงโลโก้ สคร.8 (ใช้ไฟล์ที่คุณอัปโหลดขึ้นมา)
 try:
     # แนะนำให้ตรวจสอบว่าชื่อไฟล์ตรงกับที่อัปโหลดมาเป๊ะๆ (รวมสระและนามสกุล)
-    st.sidebar.image("odpc8_logo.png", width=180)
+    st.sidebar.image("odpc8_logo.png", , use_container_width=True)
 except:
     # หากหาไฟล์ไม่เจอ ให้โชว์ไอคอนแทน
     st.sidebar.title("🏥 ODPC8 Udon Thani")
 
-st.sidebar.markdown("<hr>", unsafe_allow_html=True)
-
-# ส่วนหัวข้อเมนู (ใช้สีขาวเพื่อให้ตัดกับพื้นหลังสีเขียวที่ตั้งค่าไว้)
-st.sidebar.markdown(
-    "<h3 style='color: white; text-align: center;'>Epi-Analytic Menu</h3>", 
-    unsafe_allow_html=True
+st.sidebar.markdown("---")
 )
 
 st.sidebar.title("🏥 Epi-Analytic Menu")
@@ -791,6 +785,7 @@ elif st.session_state['registered'] and df is not None:
 st.markdown("---")
 
 st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+
 
 
 
