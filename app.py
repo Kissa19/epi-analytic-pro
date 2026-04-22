@@ -440,8 +440,8 @@ elif df is not None:
                     st.warning("กรุณากรอกตัวเลขจำนวนในตาราง 2x2")
 
     # 4. Adjusted Analysis
-    elif menu == "🧬 Multiple Logistic Regression (Adjusted OR; AOR)":
-        st.title("🧬 Multiple Logistic Regression (Adjusted OR; AOR)")
+    elif menu == "🧬 Multiple Logistic Regression (AOR)":
+        st.title("🧬 Multiple Logistic Regression (AOR)")
         st.markdown("วิเคราะห์ปัจจัยเสี่ยงโดยควบคุมตัวแปรกวน (แสดงค่า AOR และ 95% CI)")
 
         out_v = st.selectbox("ตัวแปรตาม (Outcome)", df.columns, key="log_out")
