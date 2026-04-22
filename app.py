@@ -11,12 +11,13 @@ import plotly.express as px
 import folium
 from streamlit_folium import folium_static
 import requests
+import math
 
 # ==========================================
-# 1. CONFIGURATION & PROFESSIONAL STYLING
+# 1. CONFIGURATION & Professional Styling
 # ==========================================
 st.set_page_config(
-    page_title="Epi-Analytic Pro | ODPC8", 
+    page_title="Epi-Analytic Pro ODPC8", 
     page_icon="🦠", 
     layout="wide"
 )
@@ -34,29 +35,31 @@ st.markdown(
             color: #31333F !important;
             font-weight: 500;
         }
-        .stButton > button { border-radius: 8px; font-weight: 600; }
+        .stButton > button { border-radius: 8px; }
     </style>
     """,
     unsafe_allow_html=True
 )
 
 # ==========================================
-# 2. SESSION STATE & HELPERS
+# 2. SESSION STATE
 # ==========================================
 if 'registered' not in st.session_state:
     st.session_state['registered'] = False
 
-@st.cache_data
+# ==========================================
+# 3. HELPER FUNCTIONS
+# ==========================================
 def load_data(file):
     try:
         if file.name.endswith('.csv'): return pd.read_csv(file)
         else: return pd.read_excel(file)
     except Exception as e:
-        st.error(f"โหลดไฟล์ไม่สำเร็จ: {e}")
+        st.error(f"ไม่สามารถโหลดไฟล์ได้: {e}")
         return None
 
 def smart_map_variable(series):
-    """จัดการรหัส 1/2 ให้เป็น 1/0 สำหรับการคำนวณทางระบาดวิทยา"""
+    """จัดการรหัส 1/2 หรือ 1.0/2.0 ให้เป็น 1/0 สำหรับการคำนวณทางระบาดวิทยา"""
     unique_vals = set(series.dropna().unique())
     if unique_vals.issubset({1, 2, 1.0, 2.0, '1', '2'}):
         return pd.to_numeric(series, errors='coerce').map({1: 1, 2: 0, 1.0: 1, 2.0: 0})
@@ -74,7 +77,7 @@ def calculate_mid_p(a, b, c, d):
     return max(min(mid_p, 1.0), 0.0)
 
 # ==========================================
-# 3. SIDEBAR NAVIGATION
+# 4. SIDEBAR NAVIGATION
 # ==========================================
 try:
     st.sidebar.image("odpc8_logo.png", use_container_width=True)
@@ -85,45 +88,52 @@ st.sidebar.markdown("---")
 
 if not st.session_state['registered']:
     menu = "📝 ลงทะเบียนใช้งาน"
-    st.sidebar.warning("⚠️ โปรดลงทะเบียนก่อนเข้าสู่โหมดวิเคราะห์")
+    st.sidebar.warning("⚠️ โปรดลงทะเบียนเพื่อปลดล็อกเมนูวิเคราะห์")
 else:
     menu = st.sidebar.radio(
         "เลือกหัวข้อการวิเคราะห์", 
         ["👤 พรรณนา (Descriptive)", 
          "📊 สร้าง Epi Curve (Time)", 
          "🗺️ Spot Map (Place)",
-         "🔬 Crude Analysis (OR/RR)", 
+         "🔬 Bivariate Analysis (OR/RR)", 
          "🧬 Adjusted Analysis (Logistic)",
-         "📈 Dashboard & Report",
          "📝 ข้อมูลการลงทะเบียน (แก้ไข)"]
     )
 
 # ==========================================
-# 4. DATA SOURCE SELECTOR
+# 5. DATA SOURCE MANAGEMENT
 # ==========================================
 df = None
 if st.session_state['registered']:
     st.sidebar.divider()
-    source = st.sidebar.radio("แหล่งข้อมูล:", ["อัปโหลดไฟล์ (Excel/CSV)", "Google Sheets"])
-    if source == "อัปโหลดไฟล์ (Excel/CSV)":
+    source_choice = st.sidebar.radio("แหล่งข้อมูล:", ["อัปโหลดไฟล์ (Excel/CSV)", "Google Sheets"])
+    
+    if source_choice == "อัปโหลดไฟล์ (Excel/CSV)":
         uploaded_file = st.sidebar.file_uploader("📂 เลือกไฟล์ข้อมูล", type=['xlsx', 'csv'])
-        if uploaded_file: df = load_data(uploaded_file)
+        if uploaded_file:
+            df = load_data(uploaded_file)
     else:
-        url = st.sidebar.text_input("🔗 ลิงก์ Google Sheets:")
-        if url:
-            conn = st.connection("gsheets", type=GSheetsConnection)
-            df = conn.read(spreadsheet=url)
+        sheet_url = st.sidebar.text_input("🔗 ลิงก์ Google Sheets:")
+        if sheet_url:
+            try:
+                conn = st.connection("gsheets", type=GSheetsConnection)
+                df = conn.read(spreadsheet=sheet_url)
+                if st.sidebar.button("🔄 อัปเดตข้อมูล"):
+                    st.cache_data.clear()
+                    st.rerun()
+            except Exception as e:
+                st.error(f"เชื่อมต่อล้มเหลว: {e}")
 
 # ==========================================
-# 5. MAIN CONTENT
+# 6. MAIN CONTENT MODULES
 # ==========================================
 
 # --- หน้าลงทะเบียน ---
 if menu == "📝 ลงทะเบียนใช้งาน" or menu == "📝 ข้อมูลการลงทะเบียน (แก้ไข)":
     st.title("📝 ลงทะเบียนเข้าใช้งานระบบ")
-    with st.form("reg_v2"):
-        u_agency = st.text_input("หน่วยงานต้นสังกัด", placeholder="เช่น รพ.สต.นาข่า")
-        u_purpose = st.selectbox("วัตถุประสงค์", ["สอบสวนโรค", "ทำผลงานวิชาการ", "เรียนรู้/ซ้อมแผน"])
+    with st.form("registration"):
+        u_agency = st.text_input("หน่วยงานต้นสังกัด (เช่น สสจ.อุดรธานี)")
+        u_purpose = st.selectbox("วัตถุประสงค์", ["สอบสวนโรคภาคสนาม", "วิเคราะห์สถิติวิชาการ", "ซ้อมแผนฯ"])
         if st.form_submit_button("เริ่มใช้งาน"):
             if u_agency:
                 st.session_state['registered'] = True
@@ -134,58 +144,77 @@ if menu == "📝 ลงทะเบียนใช้งาน" or menu == "📝
 elif df is not None:
     total_n = len(df)
 
-    # 1. ระบาดวิทยาเชิงพรรณนา (Descriptive)
+    # ------------------------------------------
+    # 6.1 Descriptive Analysis
+    # ------------------------------------------
     if menu == "👤 พรรณนา (Descriptive)":
-        st.title("👤 ระบาดวิทยาเชิงพรรณนา")
+        st.title("👤 ระบาดวิทยาเชิงพรรณนา (Descriptive Analysis)")
         st.info(f"📋 จำนวนผู้ป่วยทั้งหมด (n) = {total_n} ราย")
 
         c1, c2 = st.columns(2)
         with c1:
             st.subheader("1. เพศ (Sex)")
-            sex_col = st.selectbox("ตัวแปรเพศ", df.columns, key="s1")
+            sex_col = st.selectbox("เลือกตัวแปรเพศ", df.columns)
             sex_df = df[sex_col].value_counts().reset_index()
-            sex_df.columns = ['เพศ', 'n']; sex_df['%'] = (sex_df['n']/total_n*100)
-            st.table(sex_df.style.format({'%': '{:.2f}'}))
+            sex_df.columns = ['เพศ', 'จำนวน (n)']
+            sex_df['ร้อยละ (%)'] = (sex_df['จำนวน (n)']/total_n*100).round(2)
+            st.table(sex_df.style.format({'ร้อยละ (%)': '{:.2f}'}))
 
         with c2:
             st.subheader("2. อายุ (Age Groups)")
-            age_col = st.selectbox("ตัวแปรอายุ", df.columns, key="s2")
-            df['age_grp'] = pd.cut(df[age_col], bins=[0,5,15,25,35,45,55,65,120], labels=['0-4','5-14','15-24','25-34','35-44','45-54','55-64','65+'])
+            age_col = st.selectbox("เลือกตัวแปรอายุ", df.columns)
+            df['age_grp'] = pd.cut(df[age_col], bins=[0,5,15,25,35,45,55,65,120], 
+                                  labels=['0-4','5-14','15-24','25-34','35-44','45-54','55-64','65+'])
             age_df = df['age_grp'].value_counts().sort_index().reset_index()
-            age_df.columns = ['กลุ่มอายุ', 'n']; age_df['%'] = (age_df['n']/total_n*100)
-            st.table(age_df.style.format({'%': '{:.2f}'}))
+            age_df.columns = ['กลุ่มอายุ', 'จำนวน (n)']
+            age_df['ร้อยละ (%)'] = (age_df['จำนวน (n)']/total_n*100).round(2)
+            st.table(age_df.style.format({'ร้อยละ (%)': '{:.2f}'}))
 
         st.subheader("3. อาการและอาการแสดง (1=มีอาการ)")
         symp_cols = st.multiselect("เลือกตัวแปรอาการ", df.columns)
         if symp_cols:
-            s_data = [{"อาการ": c, "n": int((df[c]==1).sum()), "%": ((df[c]==1).sum()/total_n*100)} for c in symp_cols]
-            s_df = pd.DataFrame(s_data).sort_values("n", ascending=True)
-            fig_s = px.bar(s_df, x="%", y="อาการ", orientation='h', title="ความถี่ของอาการ (ร้อยละ)", text_auto='.1f', color_discrete_sequence=['#3498db'])
+            s_data = [{"อาการ": c, "จำนวน (n)": int((df[c]==1).sum()), "ร้อยละ (%)": ((df[c]==1).sum()/total_n*100)} for c in symp_cols]
+            s_df = pd.DataFrame(s_data).sort_values("จำนวน (n)", ascending=True)
+            st.table(pd.DataFrame(s_data).sort_values("จำนวน (n)", ascending=False).style.format({'ร้อยละ (%)': '{:.2f}'}))
+            fig_s = px.bar(s_df, x="ร้อยละ (%)", y="อาการ", orientation='h', title="ความถี่ของอาการ (ร้อยละ)", text_auto='.1f', color_discrete_sequence=['#3498db'])
             st.plotly_chart(fig_s, use_container_width=True)
 
-    # 2. Epi Curve (Bin & Padding สมบูรณ์)
+        st.subheader("4. ปัจจัยเสี่ยง (1=มีปัจจัย)")
+        risk_cols = st.multiselect("เลือกตัวแปรปัจจัยเสี่ยง", [c for c in df.columns if c not in symp_cols])
+        if risk_cols:
+            r_data = [{"ปัจจัย": c, "จำนวน (n)": int((df[c]==1).sum()), "ร้อยละ (%)": ((df[c]==1).sum()/total_n*100)} for c in risk_cols]
+            st.table(pd.DataFrame(r_data).sort_values("จำนวน (n)", ascending=False).style.format({'ร้อยละ (%)': '{:.2f}'}))
+
+    # ------------------------------------------
+    # 6.2 Epidemic Curve (Bin & Padding)
+    # ------------------------------------------
     elif menu == "📊 สร้าง Epi Curve (Time)":
         st.title("📊 Interactive Epidemic Curve")
-        date_col = st.sidebar.selectbox("คอลัมน์วันเริ่มป่วย", df.columns)
-        col_grp = st.sidebar.selectbox("แยกกลุ่มตามสี (Stacked):", ["<none>"] + list(df.columns))
+        date_col = st.sidebar.selectbox("เลือกคอลัมน์วันที่เริ่มป่วย", df.columns)
+        col_grp = st.sidebar.selectbox("ตัวแปรจัดกลุ่ม (Stacked Color):", ["<none>"] + list(df.columns))
         
         unit_map = {"Hour": "H", "Day": "D", "Week": "W", "Month": "M"}
         bin_size = st.sidebar.number_input("Bin Size", min_value=1, value=1)
         bin_unit = st.sidebar.selectbox("Unit", list(unit_map.keys()), index=1)
         freq = f"{bin_size}{unit_map[bin_unit]}"
 
-        # ส่วน Padding หัว-ท้าย
-        pad_before = st.sidebar.number_input(f"เพิ่มช่วงว่างก่อนหน้า ({bin_unit})", value=2)
-        pad_after = st.sidebar.number_input(f"เพิ่มช่วงว่างข้างหลัง ({bin_unit})", value=2)
+        # Padding หัว-ท้าย
+        pad_before = st.sidebar.number_input(f"เพิ่มช่วงก่อนหน้า ({bin_unit})", value=2)
+        pad_after = st.sidebar.number_input(f"เพิ่มช่วงข้างหลัง ({bin_unit})", value=2)
 
         df[date_col] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
         df_clean = df.dropna(subset=[date_col]).copy()
 
         if not df_clean.empty:
-            # คำนวณช่วงเวลาแบบมี Padding
-            start_dt = (df_clean[date_col].min() - pd.to_timedelta(pad_before * bin_size, unit=bin_unit[0].lower())).floor('D')
-            end_dt = (df_clean[date_col].max() + pd.to_timedelta(pad_after * bin_size, unit=bin_unit[0].lower())).ceil('D')
-            full_range = pd.date_range(start=start_dt, end=end_dt, freq=freq)
+            # Reindexing เพื่อให้แกนเวลาไม่กระโดด
+            min_dt = df_clean[date_col].min()
+            max_dt = df_clean[date_col].max()
+            
+            # คำนวณช่วงไม้บรรทัดเวลา
+            offset = pd.to_timedelta(pad_before * bin_size, unit=bin_unit[0].lower()) if bin_unit != "Month" else pd.DateOffset(months=pad_before)
+            start_range = (min_dt - offset).floor('D')
+            end_range = (max_dt + pd.to_timedelta(pad_after * bin_size, unit=bin_unit[0].lower())).ceil('D')
+            full_range = pd.date_range(start=start_range, end=end_range, freq=freq)
 
             if col_grp == "<none>":
                 counts = df_clean.groupby(pd.Grouper(key=date_col, freq=freq)).size()
@@ -198,30 +227,35 @@ elif df is not None:
                 chart_df.columns = [date_col, col_grp, 'Cases']
                 fig = px.bar(chart_df, x=date_col, y='Cases', color=col_grp, color_discrete_sequence=px.colors.qualitative.Alphabet)
 
-            fig.update_layout(bargap=0, xaxis_title="Onset Date", yaxis_title="Cases", hovermode="x unified")
+            fig.update_layout(bargap=0.05, xaxis_title="Onset Date", yaxis_title="Number of Cases", hovermode="x unified")
             st.plotly_chart(fig, use_container_width=True)
+            st.success(f"✅ ประมวลผลจากข้อมูลที่มีวันที่สมบูรณ์จำนวน {len(df_clean)} ราย")
 
-    # 3. Spot Map (Professional)
+    # ------------------------------------------
+    # 6.3 Spot Map
+    # ------------------------------------------
     elif menu == "🗺️ Spot Map (Place)":
-        st.title("🗺️ Spot Map Analytics")
-        lat_c = next((c for c in df.columns if 'lat' in c.lower()), None)
-        lon_c = next((c for c in df.columns if 'lon' in c.lower()), None)
+        st.title("🗺️ Spot Map - GIS Analytics")
+        lat_c = next((c for c in df.columns if any(p in c.lower() for p in ['lat', 'latitude', 'ละติจูด'])), None)
+        lon_c = next((c for c in df.columns if any(p in c.lower() for p in ['lon', 'longitude', 'ลองจิจูด'])), None)
         
         if lat_c and lon_c:
-            df_map = df.dropna(subset=[lat_c, lon_c]).copy()
-            m = folium.Map(location=[df_map[lat_c].mean(), df_map[lon_c].mean()], zoom_start=15)
-            for idx, row in df_map.iterrows():
-                folium.CircleMarker([row[lat_c], row[lon_c]], radius=7, color='red', fill=True).add_to(m)
+            df_m = df.dropna(subset=[lat_c, lon_c]).copy()
+            m = folium.Map(location=[df_m[lat_c].mean(), df_m[lon_c].mean()], zoom_start=15)
+            for idx, r in df_m.iterrows():
+                folium.CircleMarker([r[lat_c], r[lon_c]], radius=7, color='red', fill=True).add_to(m)
             folium_static(m, width=1000)
-        else: st.warning("ไม่พบคอลัมน์ Latitude/Longitude ในไฟล์ข้อมูล")
+        else: st.warning("⚠️ ไม่พบคอลัมน์พิกัด (Lat/Lon) ในไฟล์")
 
-    # 4. Crude Analysis (OR/RR)
-    elif menu == "🔬 Crude Analysis (OR/RR)":
+    # ------------------------------------------
+    # 6.4 Bivariate Analysis (OR/RR)
+    # ------------------------------------------
+    elif menu == "🔬 Bivariate Analysis (OR/RR)":
         st.title("🔬 Bivariate Analysis (OR/RR)")
-        out_v = st.selectbox("ตัวแปรตาม (Outcome)", df.columns)
-        exp_list = st.multiselect("เลือกปัจจัยเสี่ยง (Exposures)", [c for c in df.columns if c != out_v])
+        out_v = st.selectbox("เลือกตัวแปร Outcome (เช่น ป่วย/ไม่ป่วย)", df.columns)
+        exp_list = st.multiselect("เลือกตัวแปรปัจจัยเสี่ยง (Exposures)", [c for c in df.columns if c != out_v])
         
-        if st.button("ประมวลผลสถิติ"):
+        if st.button("🚀 ประมวลผลสถิติ"):
             results = []
             for exp_v in exp_list:
                 temp = df[[out_v, exp_v]].copy().dropna()
@@ -230,31 +264,38 @@ elif df is not None:
                 b = len(temp[(temp[exp_v]==1) & (temp[out_v]==0)])
                 c = len(temp[(temp[exp_v]==0) & (temp[out_v]==1)])
                 d = len(temp[(temp[exp_v]==0) & (temp[out_v]==0)])
+                
                 or_val = (a*d)/(b*c) if (b*c) > 0 else 0
                 mid_p = calculate_mid_p(a, b, c, d)
                 results.append({"ปัจจัย": exp_v, "Odds Ratio": or_val, "Mid-P": mid_p})
             st.table(pd.DataFrame(results).style.format({"Odds Ratio": "{:.2f}", "Mid-P": "{:.4f}"}))
 
-    # 5. Adjusted Analysis (Logistic Regression)
+    # ------------------------------------------
+    # 6.5 Adjusted Analysis (Logistic)
+    # ------------------------------------------
     elif menu == "🧬 Adjusted Analysis (Logistic)":
-        st.title("🧬 Multiple Logistic Regression")
-        out_v = st.selectbox("Outcome (Target)", df.columns, key="log_out")
-        exp_v = st.selectbox("Main Exposure", [c for c in df.columns if c != out_v])
-        adj_v = st.multiselect("Covariates (Adjusted)", [c for c in df.columns if c not in [out_v, exp_v]])
+        st.title("🧬 Multiple Logistic Regression (Adjusted OR)")
+        out_v = st.selectbox("Outcome", df.columns, key="log_out")
+        exp_v = st.selectbox("ปัจจัยหลัก", [c for c in df.columns if c != out_v])
+        adj_v = st.multiselect("ตัวแปรกวน (Adjusted For)", [c for c in df.columns if c not in [out_v, exp_v]])
         
-        if st.button("วิเคราะห์ Model"):
+        if st.button("วิเคราะห์ Logistic Regression"):
             try:
                 df_m = df[[out_v, exp_v] + adj_v].copy().dropna()
                 for c in df_m.columns: df_m[c] = smart_map_variable(df_m[c])
-                formula = f"Q('{out_v}') ~ Q('{exp_v}') + " + " + ".join([f"Q('{a}')" for a in adj_v]) if adj_v else f"Q('{out_v}') ~ Q('{exp_v}')"
+                
+                formula = f"Q('{out_v}') ~ Q('{exp_v}')"
+                if adj_v: formula += " + " + " + ".join([f"Q('{a}')" for a in adj_v])
+                
                 model = smf.logit(formula, data=df_m).fit(disp=0)
                 res_df = pd.DataFrame({"Adjusted OR": np.exp(model.params), "P-value": model.pvalues})
-                st.dataframe(res_df.style.format("{:.3f}"))
+                st.dataframe(res_df[res_df.index != 'Intercept'].style.format("{:.4f}"))
+                st.success("✅ คำนวณ Adjusted OR สำเร็จ")
             except Exception as e: st.error(f"Error: {e}")
 
 else:
-    st.info("👈 กรุณาอัปโหลดไฟล์ข้อมูลที่แถบด้านซ้าย")
+    st.info("👈 กรุณานำเข้าไฟล์ข้อมูลดิบที่แถบด้านซ้าย")
 
 # --- Footer ---
 st.markdown("---")
-st.markdown("<div style='text-align: center; color: #666;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
