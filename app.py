@@ -271,8 +271,18 @@ elif df is not None:
                 chart_df.columns = [date_col, col_grp, 'Cases']
                 fig = px.bar(chart_df, x=date_col, y='Cases', color=col_grp)
 
-            fig.update_layout(bargap=0.01, xaxis=dict(type='date', tickformat='%d/%m %H:%M'))
+            fig.update_layout(
+                bargap=0.01, 
+                xaxis=dict(type='date', tickformat='%d/%m %H:%M'),
+                xaxis_title="Onset Date/Time",
+                yaxis_title="Number of Cases",
+                hovermode="x unified"
+            )
+            fig.update_traces(marker_line_width=0.5, marker_line_color='white')
+            
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.error("❌ ไม่สามารถวิเคราะห์ได้ เนื่องจากรูปแบบวันที่ในไฟล์ไม่ถูกต้อง")
 
     # 4. Spot Map
     # ------------------------------------------
