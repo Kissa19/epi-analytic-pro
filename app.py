@@ -14,7 +14,7 @@ import requests
 import math
 
 # ==========================================
-# 1. CONFIGURATION & Professional Styling
+# 1. CONFIGURATION & STYLING
 # ==========================================
 st.set_page_config(
     page_title="Epi-Analytic Pro ODPC8", 
@@ -31,7 +31,11 @@ st.markdown(
         }
         [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
         [data-testid="stSidebar"] label,
-        [data-testid="stSidebar"] span {
+        [data-testid="stSidebar"] h1,
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3,
+        [data-testid="stSidebar"] span,
+        [data-testid="stSidebar"] .st-at {
             color: #31333F !important;
             font-weight: 500;
         }
@@ -59,14 +63,12 @@ def load_data(file):
         return None
 
 def smart_map_variable(series):
-    """จัดการรหัส 1/2 หรือ 1.0/2.0 ให้เป็น 1/0 สำหรับการคำนวณทางระบาดวิทยา"""
     unique_vals = set(series.dropna().unique())
     if unique_vals.issubset({1, 2, 1.0, 2.0, '1', '2'}):
         return pd.to_numeric(series, errors='coerce').map({1: 1, 2: 0, 1.0: 1, 2.0: 0})
     return series
 
 def calculate_mid_p(a, b, c, d):
-    """คำนวณ Mid-P Exact P-value (2-tail) มาตรฐานสากล"""
     n = a + b + c + d
     if n == 0: return 1.0
     k, m = a + c, a + b
@@ -75,6 +77,9 @@ def calculate_mid_p(a, b, c, d):
     p_upper = hypergeom.sf(a-1, n, k, m)
     mid_p = 2 * (min(p_lower, p_upper) - 0.5 * p_obs)
     return max(min(mid_p, 1.0), 0.0)
+
+def find_col(df, possible_names):
+    return next((c for c in df.columns if any(p in c.lower() for p in possible_names)), None)
 
 # ==========================================
 # 4. SIDEBAR NAVIGATION
@@ -92,11 +97,12 @@ if not st.session_state['registered']:
 else:
     menu = st.sidebar.radio(
         "เลือกหัวข้อการวิเคราะห์", 
-        ["👤 พรรณนา (Descriptive)", 
+        ["👥 ประชากรและอัตราป่วย (Attack Rate)",
+         "👤 พรรณนา (Descriptive)", 
          "📊 สร้าง Epi Curve (Time)", 
          "🗺️ Spot Map (Place)",
          "🔬 Bivariate Analysis (OR/RR)", 
-         "🧬 Adjusted Analysis (Logistic)",
+         "🧬 Multiple Logistic Regression (AOR)",
          "📝 ข้อมูลการลงทะเบียน (แก้ไข)"]
     )
 
@@ -125,7 +131,7 @@ if st.session_state['registered']:
                 st.error(f"เชื่อมต่อล้มเหลว: {e}")
 
 # ==========================================
-# 6. MAIN CONTENT MODULES
+# 6. MAIN CONTENT
 # ==========================================
 
 # --- หน้าลงทะเบียน ---
@@ -136,6 +142,13 @@ if menu == "📝 ลงทะเบียนใช้งาน" or menu == "📝
         u_purpose = st.selectbox("วัตถุประสงค์", ["สอบสวนโรคภาคสนาม", "วิเคราะห์สถิติวิชาการ", "ซ้อมแผนฯ"])
         if st.form_submit_button("เริ่มใช้งาน"):
             if u_agency:
+                from datetime import datetime
+                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                payload = {"timestamp": now, "agency": u_agency, "purpose": u_purpose}
+                try:
+                    url = "https://script.google.com/macros/s/AKfycbxVGzrB9IjdvD90g2Zm8cKNwYE1PMrtaaun7YlBkGjWoL3UjVw74K49B_wg4cBfedeB/exec"
+                    requests.post(url, json=payload, timeout=5)
+                except: pass
                 st.session_state['registered'] = True
                 st.success("ลงทะเบียนสำเร็จ!")
                 st.rerun()
@@ -144,92 +157,80 @@ if menu == "📝 ลงทะเบียนใช้งาน" or menu == "📝
 elif df is not None:
     total_n = len(df)
 
-    # ------------------------------------------
-    # 6.1 Descriptive Analysis
-    # ------------------------------------------
-    if menu == "👤 พรรณนา (Descriptive)":
-        st.title("👤 ระบาดวิทยาเชิงพรรณนา (Descriptive Analysis)")
-        st.info(f"📋 จำนวนผู้ป่วยทั้งหมด (n) = {total_n} ราย")
+    # 1. Attack Rate
+    if menu == "👥 ประชากรและอัตราป่วย (Attack Rate)":
+        st.title("👥 ประชากรและอัตราป่วย (Attack Rate)")
+        sex_c = find_col(df, ['sex', 'gender', 'เพศ'])
+        age_c = find_col(df, ['age', 'อายุ'])
+        
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            st.markdown("**ประชากรแยกตามเพศ**")
+            pop_male = st.number_input("ประชากรชายทั้งหมด", min_value=1, value=100)
+            pop_female = st.number_input("ประชากรหญิงทั้งหมด", min_value=1, value=100)
+        with col_p2:
+            st.markdown("**ประชากรแยกตามกลุ่มอายุ**")
+            age_labels = ['0-4','5-14','15-24','25-34','35-44','45-54','55-64','65+']
+            pop_age = {lbl: st.number_input(f"กลุ่ม {lbl}", min_value=0, value=0) for lbl in age_labels}
 
+        if st.button("📈 คำนวณ"):
+            ar = (total_n / (pop_male + pop_female) * 100)
+            st.metric("Overall Attack Rate", f"{ar:.2f} %")
+            # ... (ตารางย่อยตามที่เคยทำ)
+
+    # 2. Descriptive Analysis
+    elif menu == "👤 พรรณนา (Descriptive)":
+        st.title("👤 ระบาดวิทยาเชิงพรรณนา")
+        st.info(f"📋 จำนวนผู้ป่วยทั้งหมด (n) = {total_n} ราย")
+        
         c1, c2 = st.columns(2)
         with c1:
-            st.subheader("1. เพศ (Sex)")
-            sex_col = st.selectbox("เลือกตัวแปรเพศ", df.columns)
-            sex_df = df[sex_col].value_counts().reset_index()
-            sex_df.columns = ['เพศ', 'จำนวน (n)']
-            sex_df['ร้อยละ (%)'] = (sex_df['จำนวน (n)']/total_n*100).round(2)
-            st.table(sex_df.style.format({'ร้อยละ (%)': '{:.2f}'}))
-
+            sex_col = st.selectbox("ตัวแปรเพศ", df.columns)
+            res_sex = df[sex_col].value_counts().reset_index()
+            res_sex.columns = ['เพศ', 'n']; res_sex['%'] = (res_sex['n']/total_n*100)
+            st.table(res_sex.style.format({'%': '{:.2f}'}))
         with c2:
-            st.subheader("2. อายุ (Age Groups)")
-            age_col = st.selectbox("เลือกตัวแปรอายุ", df.columns)
-            df['age_grp'] = pd.cut(df[age_col], bins=[0,5,15,25,35,45,55,65,120], 
-                                  labels=['0-4','5-14','15-24','25-34','35-44','45-54','55-64','65+'])
-            age_df = df['age_grp'].value_counts().sort_index().reset_index()
-            age_df.columns = ['กลุ่มอายุ', 'จำนวน (n)']
-            age_df['ร้อยละ (%)'] = (age_df['จำนวน (n)']/total_n*100).round(2)
-            st.table(age_df.style.format({'ร้อยละ (%)': '{:.2f}'}))
+            age_col = st.selectbox("ตัวแปรอายุ", df.columns)
+            df['age_grp'] = pd.cut(pd.to_numeric(df[age_col], errors='coerce'), bins=[0,5,15,25,35,45,55,65,120], labels=['0-4','5-14','15-24','25-34','35-44','45-54','55-64','65+'])
+            res_age = df['age_grp'].value_counts().sort_index().reset_index()
+            res_age.columns = ['อายุ', 'n']; res_age['%'] = (res_age['n']/total_n*100)
+            st.table(res_age.style.format({'%': '{:.2f}'}))
 
-        st.subheader("3. อาการและอาการแสดง (1=มีอาการ)")
+        st.subheader("อาการแสดง (1=มี)")
         symp_cols = st.multiselect("เลือกตัวแปรอาการ", df.columns)
         if symp_cols:
-            s_data = [{"อาการ": c, "จำนวน (n)": int((df[c]==1).sum()), "ร้อยละ (%)": ((df[c]==1).sum()/total_n*100)} for c in symp_cols]
-            s_df = pd.DataFrame(s_data).sort_values("จำนวน (n)", ascending=True)
-            st.table(pd.DataFrame(s_data).sort_values("จำนวน (n)", ascending=False).style.format({'ร้อยละ (%)': '{:.2f}'}))
-            fig_s = px.bar(s_df, x="ร้อยละ (%)", y="อาการ", orientation='h', title="ความถี่ของอาการ (ร้อยละ)", text_auto='.1f', color_discrete_sequence=['#3498db'])
-            st.plotly_chart(fig_s, use_container_width=True)
+            s_df = pd.DataFrame([{"อาการ": c, "%": (df[c]==1).sum()/total_n*100} for c in symp_cols]).sort_values("%", ascending=True)
+            st.plotly_chart(px.bar(s_df, x="%", y="อาการ", orientation='h', text_auto='.1f'), use_container_width=True)
 
-        st.subheader("4. ปัจจัยเสี่ยง (1=มีปัจจัย)")
-        risk_cols = st.multiselect("เลือกตัวแปรปัจจัยเสี่ยง", [c for c in df.columns if c not in symp_cols])
-        if risk_cols:
-            r_data = [{"ปัจจัย": c, "จำนวน (n)": int((df[c]==1).sum()), "ร้อยละ (%)": ((df[c]==1).sum()/total_n*100)} for c in risk_cols]
-            st.table(pd.DataFrame(r_data).sort_values("จำนวน (n)", ascending=False).style.format({'ร้อยละ (%)': '{:.2f}'}))
-
-    # ------------------------------------------
-    # 6.2 Epidemic Curve (Bin & Padding)
-    # ค้นหาเมนู "📊 สร้าง Epi Curve (Time)" แล้วแทนที่ด้วยโค้ดชุดนี้ครับ
+    # 3. Epidemic Curve (Advanced Fix)
     elif menu == "📊 สร้าง Epi Curve (Time)":
         st.title("📊 Interactive Epidemic Curve (Advanced)")
-        date_col = st.sidebar.selectbox("เลือกคอลัมน์วันเริ่มป่วย", df.columns)
-        col_grp = st.sidebar.selectbox("ตัวแปรจัดกลุ่ม (Stacked Color):", ["<none>"] + list(df.columns))
+        date_col = st.sidebar.selectbox("คอลัมน์วันเริ่มป่วย", df.columns)
+        col_grp = st.sidebar.selectbox("ตัวแปรแยกกลุ่มสี:", ["<none>"] + list(df.columns))
         
-        unit_map = {"Hour": "H", "Day": "D", "Week": "W", "Month": "M", "30 Min": "30min"}
-        bin_unit = st.sidebar.selectbox("หน่วยเวลา (Unit)", list(unit_map.keys()), index=0) 
+        unit_map = {"Hour": "h", "Day": "d", "Week": "W", "Month": "ME", "30 Min": "30min"}
+        bin_unit = st.sidebar.selectbox("หน่วยเวลา", list(unit_map.keys()), index=0)
         bin_size = st.sidebar.number_input("ขนาด Bin", min_value=1, value=1)
         freq = f"{bin_size}{unit_map[bin_unit]}"
 
-        pad_before = st.sidebar.number_input(f"เพิ่มช่องว่างก่อนหน้า ({bin_unit})", value=1)
-        pad_after = st.sidebar.number_input(f"เพิ่มช่องว่างข้างหลัง ({bin_unit})", value=1)
+        pad_before = st.sidebar.number_input(f"เพิ่มช่วงก่อนหน้า ({bin_unit})", value=1)
+        pad_after = st.sidebar.number_input(f"เพิ่มช่วงข้างหลัง ({bin_unit})", value=1)
 
-        # 1. แปลงรูปแบบวันที่ให้รองรับไฟล์ CSV ของคุณ (วัน/เดือน/ปี ค.ศ. ชั่วโมง:นาที)
         df[date_col] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
         df_clean = df.dropna(subset=[date_col]).copy()
 
         if not df_clean.empty:
-            min_dt = df_clean[date_col].min()
-            max_dt = df_clean[date_col].max()
+            min_dt, max_dt = df_clean[date_col].min(), df_clean[date_col].max()
             
-            # 2. Logic การตั้งขอบเขตแบบ Dynamic (ถ้าวิเคราะห์รายชั่วโมง/นาที ไม่ต้องถอยไปถึงต้นวัน)
-            # --- ส่วนที่ปรับปรุงเพื่อแก้ ValueError ---
-        if not df_clean.empty:
-            min_dt = df_clean[date_col].min()
-            max_dt = df_clean[date_col].max()
-            
-            # ปรับ Frequency Aliases ให้เป็นตัวพิมพ์เล็กตามมาตรฐาน Pandas 2.x
-            if "Hour" in bin_unit or "Min" in bin_unit:
-                # ใช้ 'h' สำหรับ Hour และ 'min' สำหรับ Minute
+            if "h" in freq or "min" in freq:
                 start_range = (min_dt - pd.Timedelta(hours=pad_before)).floor('h')
                 end_range = (max_dt + pd.Timedelta(hours=pad_after)).ceil('h')
             else:
-                # ใช้ 'd' สำหรับ Day
                 start_range = (min_dt - pd.to_timedelta(pad_before, unit='d')).floor('d')
                 end_range = (max_dt + pd.to_timedelta(pad_after, unit='d')).ceil('d')
             
-            # สร้าง "ไม้บรรทัดเวลา" (Full Range)
-            # หมายเหตุ: freq ใน unit_map ควรเป็นตัวพิมพ์เล็ก เช่น 'h', 'd', 'min'
             full_range = pd.date_range(start=start_range, end=end_range, freq=freq)
 
-            # 3. จัดกลุ่มข้อมูลราย Bin
             if col_grp == "<none>":
                 counts = df_clean.groupby(pd.Grouper(key=date_col, freq=freq)).size()
                 chart_df = counts.reindex(full_range, fill_value=0).reset_index()
@@ -239,88 +240,56 @@ elif df is not None:
                 counts = df_clean.groupby([pd.Grouper(key=date_col, freq=freq), col_grp]).size().unstack(fill_value=0)
                 chart_df = counts.reindex(full_range, fill_value=0).stack().reset_index(name='Cases')
                 chart_df.columns = [date_col, col_grp, 'Cases']
-                fig = px.bar(chart_df, x=date_col, y='Cases', color=col_grp, color_discrete_sequence=px.colors.qualitative.Alphabet)
+                fig = px.bar(chart_df, x=date_col, y='Cases', color=col_grp)
 
-            # 4. ปรับการแสดงผลให้เป็นมาตรฐานระบาดวิทยา
-            fig.update_layout(
-                bargap=0.01, # แท่งชิดกัน
-                xaxis_title="Onset Date/Time", 
-                yaxis_title="Number of Cases",
-                hovermode="x unified",
-                xaxis=dict(type='date', tickformat='%d/%m %H:%M') # แสดงเวลาในแกน X
-            )
-            fig.update_traces(marker_line_width=0.5, marker_line_color='white')
-            
+            fig.update_layout(bargap=0.01, xaxis=dict(type='date', tickformat='%d/%m %H:%M'))
             st.plotly_chart(fig, use_container_width=True)
-            st.success(f"✅ แสดงผลช่วงเวลา {start_range.strftime('%H:%M')} ถึง {end_range.strftime('%H:%M')}")
-        else:
-            st.error("❌ ไม่สามารถวิเคราะห์ได้ เนื่องจากรูปแบบวันที่ในไฟล์ไม่ถูกต้อง")
 
-    # ------------------------------------------
-    # 6.3 Spot Map
-    # ------------------------------------------
+    # 4. Spot Map
     elif menu == "🗺️ Spot Map (Place)":
-        st.title("🗺️ Spot Map - GIS Analytics")
-        lat_c = next((c for c in df.columns if any(p in c.lower() for p in ['lat', 'latitude', 'ละติจูด'])), None)
-        lon_c = next((c for c in df.columns if any(p in c.lower() for p in ['lon', 'longitude', 'ลองจิจูด'])), None)
-        
+        st.title("🗺️ Spot Map")
+        lat_c = find_col(df, ['lat', 'latitude', 'ละติจูด'])
+        lon_c = find_col(df, ['lon', 'longitude', 'ลองจิจูด'])
         if lat_c and lon_c:
-            df_m = df.dropna(subset=[lat_c, lon_c]).copy()
+            df_m = df.dropna(subset=[lat_c, lon_c])
             m = folium.Map(location=[df_m[lat_c].mean(), df_m[lon_c].mean()], zoom_start=15)
-            for idx, r in df_m.iterrows():
+            for _, r in df_m.iterrows():
                 folium.CircleMarker([r[lat_c], r[lon_c]], radius=7, color='red', fill=True).add_to(m)
             folium_static(m, width=1000)
-        else: st.warning("⚠️ ไม่พบคอลัมน์พิกัด (Lat/Lon) ในไฟล์")
 
-    # ------------------------------------------
-    # 6.4 Bivariate Analysis (OR/RR)
-    # ------------------------------------------
+    # 5. Bivariate & Logistic
     elif menu == "🔬 Bivariate Analysis (OR/RR)":
-        st.title("🔬 Bivariate Analysis (OR/RR)")
-        out_v = st.selectbox("เลือกตัวแปร Outcome (เช่น ป่วย/ไม่ป่วย)", df.columns)
-        exp_list = st.multiselect("เลือกตัวแปรปัจจัยเสี่ยง (Exposures)", [c for c in df.columns if c != out_v])
-        
-        if st.button("🚀 ประมวลผลสถิติ"):
+        st.title("🔬 Bivariate Analysis")
+        out_v = st.selectbox("Outcome", df.columns)
+        exp_list = st.multiselect("Exposures", [c for c in df.columns if c != out_v])
+        if st.button("🚀 ประมวลผล"):
             results = []
-            for exp_v in exp_list:
-                temp = df[[out_v, exp_v]].copy().dropna()
-                temp[out_v], temp[exp_v] = smart_map_variable(temp[out_v]), smart_map_variable(temp[exp_v])
-                a = len(temp[(temp[exp_v]==1) & (temp[out_v]==1)])
-                b = len(temp[(temp[exp_v]==1) & (temp[out_v]==0)])
-                c = len(temp[(temp[exp_v]==0) & (temp[out_v]==1)])
-                d = len(temp[(temp[exp_v]==0) & (temp[out_v]==0)])
-                
-                or_val = (a*d)/(b*c) if (b*c) > 0 else 0
-                mid_p = calculate_mid_p(a, b, c, d)
-                results.append({"ปัจจัย": exp_v, "Odds Ratio": or_val, "Mid-P": mid_p})
-            st.table(pd.DataFrame(results).style.format({"Odds Ratio": "{:.2f}", "Mid-P": "{:.4f}"}))
+            for e in exp_list:
+                temp = df[[out_v, e]].copy().dropna()
+                temp[out_v], temp[e] = smart_map_variable(temp[out_v]), smart_map_variable(temp[e])
+                a = len(temp[(temp[e]==1) & (temp[out_v]==1)])
+                b = len(temp[(temp[e]==1) & (temp[out_v]==0)])
+                c = len(temp[(temp[e]==0) & (temp[out_v]==1)])
+                d = len(temp[(temp[e]==0) & (temp[out_v]==0)])
+                or_val = (a*d)/(b*c) if (b*c)>0 else 0
+                results.append({"ปัจจัย": e, "OR": or_val, "Mid-P": calculate_mid_p(a,b,c,d)})
+            st.table(pd.DataFrame(results).style.format({"OR": "{:.2f}", "Mid-P": "{:.4f}"}))
 
-    # ------------------------------------------
-    # 6.5 Adjusted Analysis (Logistic)
-    # ------------------------------------------
-    elif menu == "🧬 Adjusted Analysis (Logistic)":
-        st.title("🧬 Multiple Logistic Regression (Adjusted OR)")
-        out_v = st.selectbox("Outcome", df.columns, key="log_out")
+    elif menu == "🧬 Multiple Logistic Regression (AOR)":
+        st.title("🧬 Multiple Logistic Regression")
+        out_v = st.selectbox("Outcome", df.columns, key="mlr_out")
         exp_v = st.selectbox("ปัจจัยหลัก", [c for c in df.columns if c != out_v])
-        adj_v = st.multiselect("ตัวแปรกวน (Adjusted For)", [c for c in df.columns if c not in [out_v, exp_v]])
-        
-        if st.button("วิเคราะห์ Logistic Regression"):
+        adj_v = st.multiselect("ตัวแปรกวน", [c for c in df.columns if c not in [out_v, exp_v]])
+        if st.button("🚀 คำนวณ AOR"):
             try:
                 df_m = df[[out_v, exp_v] + adj_v].copy().dropna()
                 for c in df_m.columns: df_m[c] = smart_map_variable(df_m[c])
-                
-                formula = f"Q('{out_v}') ~ Q('{exp_v}')"
-                if adj_v: formula += " + " + " + ".join([f"Q('{a}')" for a in adj_v])
-                
+                formula = f"Q('{out_v}') ~ Q('{exp_v}')" + (" + " + " + ".join([f"Q('{a}')" for a in adj_v]) if adj_v else "")
                 model = smf.logit(formula, data=df_m).fit(disp=0)
-                res_df = pd.DataFrame({"Adjusted OR": np.exp(model.params), "P-value": model.pvalues})
-                st.dataframe(res_df[res_df.index != 'Intercept'].style.format("{:.4f}"))
-                st.success("✅ คำนวณ Adjusted OR สำเร็จ")
+                res = pd.DataFrame({"AOR": np.exp(model.params), "P-value": model.pvalues})
+                st.table(res[res.index != 'Intercept'].style.format("{:.3f}"))
             except Exception as e: st.error(f"Error: {e}")
-
-else:
-    st.info("👈 กรุณานำเข้าไฟล์ข้อมูลดิบที่แถบด้านซ้าย")
 
 # --- Footer ---
 st.markdown("---")
-st.markdown("<div style='text-align: center; color: #666; font-size: 14px;'>Epi-Analytic Pro: พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: #666;'>Epi-Analytic Pro ODPC8 | พัฒนาโดย กลุ่มระบาดวิทยา</div>", unsafe_allow_html=True)
