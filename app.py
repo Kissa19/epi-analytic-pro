@@ -257,39 +257,245 @@ elif df is not None:
                 folium.CircleMarker([r[lat_c], r[lon_c]], radius=7, color='red', fill=True).add_to(m)
             folium_static(m, width=1000)
 
-    # 5. Bivariate & Logistic
+    # 3. Crude Analysis (Bivariate + Manual 2x2)
     elif menu == "🔬 Bivariate Analysis (OR/RR)":
-        st.title("🔬 Bivariate Analysis")
-        out_v = st.selectbox("Outcome", df.columns)
-        exp_list = st.multiselect("Exposures", [c for c in df.columns if c != out_v])
-        if st.button("🚀 ประมวลผล"):
-            results = []
-            for e in exp_list:
-                temp = df[[out_v, e]].copy().dropna()
-                temp[out_v], temp[e] = smart_map_variable(temp[out_v]), smart_map_variable(temp[e])
-                a = len(temp[(temp[e]==1) & (temp[out_v]==1)])
-                b = len(temp[(temp[e]==1) & (temp[out_v]==0)])
-                c = len(temp[(temp[e]==0) & (temp[out_v]==1)])
-                d = len(temp[(temp[e]==0) & (temp[out_v]==0)])
-                or_val = (a*d)/(b*c) if (b*c)>0 else 0
-                results.append({"ปัจจัย": e, "OR": or_val, "Mid-P": calculate_mid_p(a,b,c,d)})
-            st.table(pd.DataFrame(results).style.format({"OR": "{:.2f}", "Mid-P": "{:.4f}"}))
+        st.title("🔬 Bivariate Analysis & 2x2 Table")
 
-    elif menu == "🧬 Multiple Logistic Regression (AOR)":
-        st.title("🧬 Multiple Logistic Regression")
-        out_v = st.selectbox("Outcome", df.columns, key="mlr_out")
-        exp_v = st.selectbox("ปัจจัยหลัก", [c for c in df.columns if c != out_v])
-        adj_v = st.multiselect("ตัวแปรกวน", [c for c in df.columns if c not in [out_v, exp_v]])
-        if st.button("🚀 คำนวณ AOR"):
+        # สร้าง Tab เพื่อแยกการวิเคราะห์แบบไฟล์ และแบบกรอกเอง
+        tab1, tab2 = st.tabs(["📁 วิเคราะห์จากไฟล์ข้อมูล", "🔢 กรอกข้อมูลเอง (Manual 2x2)"])
+
+        with tab1:
+            st.subheader("📁 วิเคราะห์ปัจจัยเสี่ยงจากไฟล์ที่อัปโหลด")
+            if df is not None:
+                out_v = st.selectbox("ตัวแปรตาม (Outcome)", df.columns, key="file_out")
+                design = st.radio("ประเภทการศึกษา", ["Case-control Study (OR)", "Cohort Study (RR)"], key="file_design")
+                exp_list = st.multiselect("เลือกปัจจัยเสี่ยง", [c for c in df.columns if c != out_v], key="file_exp")
+
+                if st.button("🚀 ประมวลผลจากไฟล์"):
+                    import math
+                    from scipy.stats import hypergeom
+                    results = []
+
+                    for exp_v in exp_list:
+                        temp = df[[out_v, exp_v]].copy().dropna()
+                        temp[out_v] = smart_map_variable(temp[out_v])
+                        temp[exp_v] = smart_map_variable(temp[exp_v])
+                        temp = temp[temp[out_v].isin([1, 0]) & temp[exp_v].isin([1, 0])]
+
+                        if len(temp) > 0:
+                            a = len(temp[(temp[exp_v]==1) & (temp[out_v]==1)])
+                            b = len(temp[(temp[exp_v]==1) & (temp[out_v]==0)])
+                            c = len(temp[(temp[exp_v]==0) & (temp[out_v]==1)])
+                            d = len(temp[(temp[exp_v]==0) & (temp[out_v]==0)])
+
+                            try:
+                                # 1. คำนวณ Point Estimate และ 95% CI (Taylor Series)
+                                if "Case-control" in design:
+                                    m_label = "OR"
+                                    measure = (a * d) / (b * c) if (b * c) > 0 else 0
+                                    se_ln = math.sqrt(1/a + 1/b + 1/c + 1/d) if a*b*c*d > 0 else 0
+                                else:
+                                    m_label = "RR"
+                                    measure = (a / (a + b)) / (c / (c + d)) if (a+b) > 0 and (c+d) > 0 else 0
+                                    se_ln = math.sqrt((1/a - 1/(a+b)) + (1/c - 1/(c+d))) if a*c > 0 else 0
+
+                                ci_l = math.exp(math.log(measure) - 1.96 * se_ln) if measure > 0 else 0
+                                ci_u = math.exp(math.log(measure) + 1.96 * se_ln) if measure > 0 else 0
+
+                                # 2. คำนวณ Mid-P Exact P-value (2-tail)
+                                def calc_mid_p(a, b, c, d):
+                                    n = a + b + c + d
+                                    k = a + c # total sick
+                                    m = a + b # total exposed
+                                    if n == 0 or k == 0 or m == 0: return 1.0
+                                    p_obs = hypergeom.pmf(a, n, k, m)
+                                    p_lower = hypergeom.cdf(a, n, k, m)
+                                    p_upper = hypergeom.sf(a-1, n, k, m)
+                                    return 2 * (min(p_lower, p_upper) - 0.5 * p_obs)
+
+                                mid_p_val = calc_mid_p(a, b, c, d)
+
+                                results.append({
+                                    "ปัจจัย": exp_v, 
+                                    "ป่วย(+)": a, "ไม่ป่วย(+)": b, 
+                                    "ป่วย(-)": c, "ไม่ป่วย(-)": d, 
+                                    m_label: measure, 
+                                    "95% CI Lower": ci_l, 
+                                    "95% CI Upper": ci_u, 
+                                    "Mid-P (2-tail)": max(mid_p_val, 0)
+                                })
+                            except: pass
+
+                    if results:
+                        res_df = pd.DataFrame(results)
+                        st.success(f"✅ ประมวลผลสำเร็จ (ใช้สูตร Taylor Series และ Mid-P ตามมาตรฐาน OpenEpi)")
+                        st.dataframe(res_df.style.format({
+                            m_label: "{:.2f}", 
+                            "95% CI Lower": "{:.3f}", 
+                            "95% CI Upper": "{:.3f}", 
+                            "Mid-P (2-tail)": "{:.7f}"
+                        }))
+                    else:
+                        st.warning("⚠️ ไม่พบข้อมูลที่เพียงพอในการวิเคราะห์")
+
+        with tab2:
+            st.subheader("🔢 Manual 2x2 Table Calculator")
+            st.info("ใช้สำหรับคำนวณกรณีมีเพียงตัวเลขสรุป (Aggregated Data) โดยไม่ต้องอัปโหลดไฟล์")
+
+            # 1. เลือกรูปแบบการศึกษา
+            manual_design = st.radio(
+                "รูปแบบการศึกษา (Study Design):",
+                ["Cohort Study (Relative Risk)", "Case-Control Study (Odds Ratio)"],
+                horizontal=True, key="man_design"
+            )
+
+            # 2. ส่วนการกรอกข้อมูล 2x2 Table
+            st.markdown("---")
+            c1, c2, c3 = st.columns([2, 1, 1])
+
+            with c1:
+                st.write("") 
+                st.write("")
+                st.markdown("**Exposed (สัมผัสปัจจัย)**")
+                st.write("")
+                st.markdown("**Non-Exposed (ไม่สัมผัส)**")
+
+            with c2:
+                st.markdown("<center><b>Sick (ป่วย)</b></center>", unsafe_allow_html=True)
+                ma = st.number_input("Cell a", min_value=0, value=0, step=1, label_visibility="collapsed")
+                mc = st.number_input("Cell c", min_value=0, value=0, step=1, label_visibility="collapsed")
+
+            with c3:
+                st.markdown("<center><b>Not Sick (ไม่ป่วย)</b></center>", unsafe_allow_html=True)
+                mb = st.number_input("Cell b", min_value=0, value=0, step=1, label_visibility="collapsed")
+                md = st.number_input("Cell d", min_value=0, value=0, step=1, label_visibility="collapsed")
+
+            # 3. ส่วนการคำนวณสถิติ
+            if st.button("📈 คำนวณผล 2x2 Table"):
+                if (ma + mb + mc + md) > 0:
+                    import math
+                    from scipy.stats import chi2_contingency, hypergeom
+
+                    try:
+                        # --- คำนวณค่า Point Estimate ---
+                        if "Case-Control" in manual_design:
+                            res_label = "Odds Ratio (OR)"
+                            val = (ma * md) / (mb * mc) if (mb * mc) > 0 else 0
+                        else:
+                            res_label = "Relative Risk (RR)"
+                            val = (ma / (ma + mb)) / (mc / (mc + md)) if (ma + mb) > 0 and (mc + md) > 0 else 0
+
+                        # --- คำนวณ 95% CI แบบ Taylor Series (มาตรฐาน OpenEpi) ---
+                        if "Case-Control" in manual_design:
+                            # Taylor Series for OR
+                            se_ln = math.sqrt(1/ma + 1/mb + 1/mc + 1/md)
+                        else:
+                            # Taylor Series for RR
+                            se_ln = math.sqrt((1/ma - 1/(ma+mb)) + (1/mc - 1/(mc+md)))
+
+                        lower = math.exp(math.log(val) - 1.96 * se_ln) if val > 0 else 0
+                        upper = math.exp(math.log(val) + 1.96 * se_ln) if val > 0 else 0
+
+                        # --- คำนวณ Chi-Square (Yates และ Uncorrected) ---
+                        obs = np.array([[ma, mb], [mc, md]])
+                        chi2_uncorrected, p_uncor, _, _ = chi2_contingency(obs, correction=False)
+                        chi2_yates, p_yates, _, _ = chi2_contingency(obs, correction=True)
+
+                        # --- คำนวณ Mid-P Exact P-value (2-tail) ---
+                        def get_mid_p(a, b, c, d):
+                            n = a + b + c + d
+                            k = a + c # total sick
+                            m = a + b # total exposed
+                            p_obs = hypergeom.pmf(a, n, k, m)
+                            # Mid-P = P(extreme) - 0.5 * P(observed)
+                            p_lower = hypergeom.cdf(a, n, k, m)
+                            p_upper = hypergeom.sf(a-1, n, k, m)
+                            return 2 * (min(p_lower, p_upper) - 0.5 * p_obs)
+
+                        mid_p_val = get_mid_p(ma, mb, mc, md)
+
+                        # --- แสดงผลลัพธ์ ---
+                        st.markdown("---")
+                        col_res1, col_res2 = st.columns(2)
+
+                        with col_res1:
+                            st.metric(res_label, f"{val:.2f}")
+                            st.write(f"**95% CI (Taylor Series):**")
+                            st.write(f"👉 {lower:.3f} - {upper:.3f}")
+                            st.caption("ค่านี้จะตรงกับผลลัพธ์ใน OpenEpi/Epi Info")
+
+                        with col_res2:
+                            st.write("**Statistical Significance**")
+                            st.write(f"**Yates chi-square:** {chi2_yates:.3f}")
+                            st.write(f"**Mid-P exact (2-tail):** {max(mid_p_val, 0.0000001):.7f}")
+
+                            if mid_p_val < 0.05:
+                                st.success("✨ มีนัยสำคัญทางสถิติ (p < 0.05)")
+                            else:
+                                st.error("❌ ไม่มีนัยสำคัญทางสถิติ")
+
+                    except Exception as e:
+                        st.error(f"⚠️ เกิดข้อผิดพลาดในการคำนวณ: {e}")
+                else:
+                    st.warning("กรุณากรอกตัวเลขจำนวนในตาราง 2x2")
+
+    # 4. Adjusted Analysis
+    elif menu == "🧬 Multiple Logistic Regression (Adjusted OR; AOR)":
+        st.title("🧬 Multiple Logistic Regression (Adjusted OR; AOR)")
+        st.markdown("วิเคราะห์ปัจจัยเสี่ยงโดยควบคุมตัวแปรกวน (แสดงค่า AOR และ 95% CI)")
+
+        out_v = st.selectbox("ตัวแปรตาม (Outcome)", df.columns, key="log_out")
+        exp_v = st.selectbox("ปัจจัยหลัก (Exposure)", [c for c in df.columns if c != out_v], key="log_exp")
+        adj_v = st.multiselect("ตัวแปรกวน (Confounding)", [c for c in df.columns if c not in [out_v, exp_v]], key="log_adj")
+
+        if st.button("🚀 ประมวลผล Logistic Regression"):
             try:
-                df_m = df[[out_v, exp_v] + adj_v].copy().dropna()
-                for c in df_m.columns: df_m[c] = smart_map_variable(df_m[c])
-                formula = f"Q('{out_v}') ~ Q('{exp_v}')" + (" + " + " + ".join([f"Q('{a}')" for a in adj_v]) if adj_v else "")
-                model = smf.logit(formula, data=df_m).fit(disp=0)
-                res = pd.DataFrame({"AOR": np.exp(model.params), "P-value": model.pvalues})
-                st.table(res[res.index != 'Intercept'].style.format("{:.3f}"))
-            except Exception as e: st.error(f"Error: {e}")
+                # 1. เตรียมข้อมูลและทำความสะอาด (จัดการรหัส 1/2 เป็น 1/0)
+                cols_needed = [out_v, exp_v] + adj_v
+                df_m = df[cols_needed].copy().dropna()
+                for col in df_m.columns:
+                    df_m[col] = smart_map_variable(df_m[col])
 
+                # 2. สร้างสูตรการคำนวณ
+                formula = f"Q('{out_v}') ~ Q('{exp_v}')"
+                if adj_v:
+                    formula += " + " + " + ".join([f"Q('{a}')" for a in adj_v])
+
+                # 3. รัน Model
+                model = smf.logit(formula, data=df_m).fit(disp=0)
+
+                # 4. คำนวณค่า AOR และ 95% CI
+                # ใช้ np.exp เพื่อแปลงค่า Coefficient (Log odds) เป็น Odds Ratio
+                conf_int = model.conf_int() # ได้ค่า CI ในรูปแบบ Log odds
+
+                res_df = pd.DataFrame({
+                    "Factors": model.params.index,
+                    "Adjusted OR (AOR)": np.exp(model.params.values),
+                    "95% CI Lower": np.exp(conf_int[0].values),
+                    "95% CI Upper": np.exp(conf_int[1].values),
+                    "P-value": model.pvalues.values
+                })
+
+                # ลบ Intercept และล้างชื่อตัวแปรให้สวยงาม
+                res_df = res_df[res_df['Factors'] != 'Intercept']
+                res_df['Factors'] = res_df['Factors'].str.extract(r"Q\('(.*)'\)")[0].fillna(res_df['Factors'])
+
+                # 5. แสดงผลตาราง
+                st.subheader("📋 สรุปผลการวิเคราะห์ปัจจัยเสี่ยงโดยควบคุมตัวแปรกวน")
+                st.dataframe(res_df.style.format({
+                    "Adjusted OR (AOR)": "{:.2f}",
+                    "95% CI Lower": "{:.2f}",
+                    "95% CI Upper": "{:.2f}",
+                    "P-value": "{:.4f}"
+                }).apply(lambda x: ['background-color: #e8f5e9' if x['P-value'] < 0.05 else '' for _ in x], axis=1), 
+                use_container_width=True)
+
+                st.success("✅ คำนวณค่า Adjusted OR และ 95% CI สำเร็จ")
+
+            except Exception as e:
+                st.error(f"⚠️ ไม่สามารถประมวลผลได้: {e}")
+                st.info("คำแนะนำ: ตรวจสอบว่าตัวแปรอิสระมีจำนวนผู้ป่วย (Case) เพียงพอในแต่ละกลุ่มหรือไม่")
+                
 # --- Footer ---
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: #666;'>Epi-Analytic Pro ODPC8 | พัฒนาโดย กลุ่มระบาดวิทยา</div>", unsafe_allow_html=True)
