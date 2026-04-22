@@ -271,15 +271,8 @@ elif df is not None:
                 chart_df.columns = [date_col, col_grp, 'Cases']
                 fig = px.bar(chart_df, x=date_col, y='Cases', color=col_grp)
 
-            # อัปเดตกราฟ (รวมการบังคับฟอนต์ Kanit สีชมพูเข้ม และคงการตั้งค่าแกนเวลาไว้)
-            fig.update_layout(
-                font=dict(family="Kanit", size=14, color="#880E4F"), # บังคับฟอนต์ Kanit
-                bargap=0.01, 
-                xaxis=dict(type='date', tickformat='%d/%m %H:%M'),   # บรรทัดนี้ห้ามหาย!
-                xaxis_title="Onset Date/Time",
-                yaxis_title="Number of Cases",
-                hovermode="x unified"
-            )
+            fig.update_layout(bargap=0.01, xaxis=dict(type='date', tickformat='%d/%m %H:%M'))
+            st.plotly_chart(fig, use_container_width=True)
 
     # 4. Spot Map
     # ------------------------------------------
