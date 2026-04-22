@@ -247,7 +247,6 @@ elif df is not None:
 
     # 4. Spot Map
     # ------------------------------------------
-    # ------------------------------------------
     elif menu == "🗺️ Spot Map (Place)":
         st.title("🗺️ Spot Map - GIS Analytics")
         lat_c = next((c for c in df.columns if any(p in c.lower() for p in ['lat', 'latitude', 'ละติจูด'])), None)
