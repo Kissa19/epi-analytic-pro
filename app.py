@@ -25,9 +25,10 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+        /* ธีมสีชมพู-ขาว กรมควบคุมโรค (DDC Theme) */
         [data-testid="stSidebar"] {
-            background-color: #F8F9FB !important;
-            border-right: 1px solid #E0E0E0;
+            background-color: #FFF0F5 !important; /* พื้นหลัง Sidebar ขาวอมชมพูอ่อน */
+            border-right: 1px solid #F8BBD0;
         }
         [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
         [data-testid="stSidebar"] label,
@@ -36,15 +37,29 @@ st.markdown(
         [data-testid="stSidebar"] h3,
         [data-testid="stSidebar"] span,
         [data-testid="stSidebar"] .st-at {
-            color: #31333F !important;
-            font-weight: 500;
+            color: #880E4F !important; /* ตัวหนังสือ Sidebar ชมพูเข้ม */
+            font-weight: 600;
         }
-        .stButton > button { border-radius: 8px; }
+        /* ปุ่มกด (Buttons) */
+        .stButton > button { 
+            background-color: #E91E63 !important; /* สีชมพู กรมควบคุมโรค */
+            color: #FFFFFF !important;
+            border-radius: 8px; 
+            border: none;
+            font-weight: bold;
+        }
+        .stButton > button:hover {
+            background-color: #C2185B !important; /* ชมพูเข้มขึ้นเมื่อเอาเมาส์ชี้ */
+            color: #FFFFFF !important;
+        }
+        /* หัวข้อหลักในหน้าแอป (Headers) */
+        h1, h2, h3 {
+            color: #D81B60 !important;
+        }
     </style>
     """,
     unsafe_allow_html=True
 )
-
 # ==========================================
 # 2. SESSION STATE
 # ==========================================
