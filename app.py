@@ -187,49 +187,65 @@ elif df is not None:
 
     # ------------------------------------------
     # 6.2 Epidemic Curve (Bin & Padding)
-    # ------------------------------------------
+    # ค้นหาเมนู "📊 สร้าง Epi Curve (Time)" แล้วแทนที่ด้วยโค้ดชุดนี้ครับ
     elif menu == "📊 สร้าง Epi Curve (Time)":
-        st.title("📊 Interactive Epidemic Curve")
-        date_col = st.sidebar.selectbox("เลือกคอลัมน์วันที่เริ่มป่วย", df.columns)
+        st.title("📊 Interactive Epidemic Curve (Advanced)")
+        date_col = st.sidebar.selectbox("เลือกคอลัมน์วันเริ่มป่วย", df.columns)
         col_grp = st.sidebar.selectbox("ตัวแปรจัดกลุ่ม (Stacked Color):", ["<none>"] + list(df.columns))
         
-        unit_map = {"Hour": "H", "Day": "D", "Week": "W", "Month": "M"}
-        bin_size = st.sidebar.number_input("Bin Size", min_value=1, value=1)
-        bin_unit = st.sidebar.selectbox("Unit", list(unit_map.keys()), index=1)
+        unit_map = {"Hour": "H", "Day": "D", "Week": "W", "Month": "M", "30 Min": "30min"}
+        bin_unit = st.sidebar.selectbox("หน่วยเวลา (Unit)", list(unit_map.keys()), index=0) 
+        bin_size = st.sidebar.number_input("ขนาด Bin", min_value=1, value=1)
         freq = f"{bin_size}{unit_map[bin_unit]}"
 
-        # Padding หัว-ท้าย
-        pad_before = st.sidebar.number_input(f"เพิ่มช่วงก่อนหน้า ({bin_unit})", value=2)
-        pad_after = st.sidebar.number_input(f"เพิ่มช่วงข้างหลัง ({bin_unit})", value=2)
+        pad_before = st.sidebar.number_input(f"เพิ่มช่องว่างก่อนหน้า ({bin_unit})", value=1)
+        pad_after = st.sidebar.number_input(f"เพิ่มช่องว่างข้างหลัง ({bin_unit})", value=1)
 
+        # 1. แปลงรูปแบบวันที่ให้รองรับไฟล์ CSV ของคุณ (วัน/เดือน/ปี ค.ศ. ชั่วโมง:นาที)
         df[date_col] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
         df_clean = df.dropna(subset=[date_col]).copy()
 
         if not df_clean.empty:
-            # Reindexing เพื่อให้แกนเวลาไม่กระโดด
             min_dt = df_clean[date_col].min()
             max_dt = df_clean[date_col].max()
             
-            # คำนวณช่วงไม้บรรทัดเวลา
-            offset = pd.to_timedelta(pad_before * bin_size, unit=bin_unit[0].lower()) if bin_unit != "Month" else pd.DateOffset(months=pad_before)
-            start_range = (min_dt - offset).floor('D')
-            end_range = (max_dt + pd.to_timedelta(pad_after * bin_size, unit=bin_unit[0].lower())).ceil('D')
+            # 2. Logic การตั้งขอบเขตแบบ Dynamic (ถ้าวิเคราะห์รายชั่วโมง/นาที ไม่ต้องถอยไปถึงต้นวัน)
+            if "Min" in bin_unit or "Hour" in bin_unit:
+                start_range = (min_dt - pd.Timedelta(hours=pad_before)).floor('H')
+                end_range = (max_dt + pd.Timedelta(hours=pad_after)).ceil('H')
+            else:
+                start_range = (min_dt - pd.to_timedelta(pad_before, unit='D')).floor('D')
+                end_range = (max_dt + pd.to_timedelta(pad_after, unit='D')).ceil('D')
+            
+            # สร้าง "ไม้บรรทัดเวลา" ที่สมบูรณ์
             full_range = pd.date_range(start=start_range, end=end_range, freq=freq)
 
+            # 3. จัดกลุ่มข้อมูลราย Bin
             if col_grp == "<none>":
                 counts = df_clean.groupby(pd.Grouper(key=date_col, freq=freq)).size()
                 chart_df = counts.reindex(full_range, fill_value=0).reset_index()
                 chart_df.columns = [date_col, 'Cases']
-                fig = px.bar(chart_df, x=date_col, y='Cases', text_auto=True, color_discrete_sequence=['#89CFF0'])
+                fig = px.bar(chart_df, x=date_col, y='Cases', text_auto=True, color_discrete_sequence=['#3498db'])
             else:
                 counts = df_clean.groupby([pd.Grouper(key=date_col, freq=freq), col_grp]).size().unstack(fill_value=0)
                 chart_df = counts.reindex(full_range, fill_value=0).stack().reset_index(name='Cases')
                 chart_df.columns = [date_col, col_grp, 'Cases']
                 fig = px.bar(chart_df, x=date_col, y='Cases', color=col_grp, color_discrete_sequence=px.colors.qualitative.Alphabet)
 
-            fig.update_layout(bargap=0.05, xaxis_title="Onset Date", yaxis_title="Number of Cases", hovermode="x unified")
+            # 4. ปรับการแสดงผลให้เป็นมาตรฐานระบาดวิทยา
+            fig.update_layout(
+                bargap=0.01, # แท่งชิดกัน
+                xaxis_title="Onset Date/Time", 
+                yaxis_title="Number of Cases",
+                hovermode="x unified",
+                xaxis=dict(type='date', tickformat='%d/%m %H:%M') # แสดงเวลาในแกน X
+            )
+            fig.update_traces(marker_line_width=0.5, marker_line_color='white')
+            
             st.plotly_chart(fig, use_container_width=True)
-            st.success(f"✅ ประมวลผลจากข้อมูลที่มีวันที่สมบูรณ์จำนวน {len(df_clean)} ราย")
+            st.success(f"✅ แสดงผลช่วงเวลา {start_range.strftime('%H:%M')} ถึง {end_range.strftime('%H:%M')}")
+        else:
+            st.error("❌ ไม่สามารถวิเคราะห์ได้ เนื่องจากรูปแบบวันที่ในไฟล์ไม่ถูกต้อง")
 
     # ------------------------------------------
     # 6.3 Spot Map
