@@ -246,16 +246,66 @@ elif df is not None:
             st.plotly_chart(fig, use_container_width=True)
 
     # 4. Spot Map
+    # ------------------------------------------
+    # ------------------------------------------
     elif menu == "🗺️ Spot Map (Place)":
-        st.title("🗺️ Spot Map")
-        lat_c = find_col(df, ['lat', 'latitude', 'ละติจูด'])
-        lon_c = find_col(df, ['lon', 'longitude', 'ลองจิจูด'])
+        st.title("🗺️ Spot Map - GIS Analytics")
+        lat_c = next((c for c in df.columns if any(p in c.lower() for p in ['lat', 'latitude', 'ละติจูด'])), None)
+        lon_c = next((c for c in df.columns if any(p in c.lower() for p in ['lon', 'longitude', 'ลองจิจูด'])), None)
+        
         if lat_c and lon_c:
-            df_m = df.dropna(subset=[lat_c, lon_c])
-            m = folium.Map(location=[df_m[lat_c].mean(), df_m[lon_c].mean()], zoom_start=15)
-            for _, r in df_m.iterrows():
-                folium.CircleMarker([r[lat_c], r[lon_c]], radius=7, color='red', fill=True).add_to(m)
-            folium_static(m, width=1000)
+            df_m = df.dropna(subset=[lat_c, lon_c]).copy()
+
+            # --- เพิ่มเมนูตั้งค่าแผนที่ใน Sidebar ---
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("⚙️ ตั้งค่าแผนที่ (Map Settings)")
+            buffer_radius = st.sidebar.number_input("รัศมีควบคุมโรค (เมตร)", min_value=0, value=100, step=50)
+            map_type = st.sidebar.radio("รูปแบบแผนที่", ["ดาวเทียม (Google Hybrid)", "แผนที่ถนน (OpenStreetMap)"])
+
+            # กำหนด Tile (พื้นหลังแผนที่) ตามที่เลือก
+            if map_type == "ดาวเทียม (Google Hybrid)":
+                # ใช้ Google Hybrid เพื่อให้เห็นภาพดาวเทียมและชื่อถนนควบคู่กัน
+                tiles_url = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
+                attr = 'Google'
+            else:
+                tiles_url = 'OpenStreetMap'
+                attr = 'OpenStreetMap'
+
+            # สร้างแผนที่หลัก
+            m = folium.Map(
+                location=[df_m[lat_c].mean(), df_m[lon_c].mean()], 
+                zoom_start=16, 
+                tiles=tiles_url, 
+                attr=attr
+            )
+
+            # วาดจุดและรัศมีลงบนแผนที่
+            for idx, r in df_m.iterrows():
+                # 1. วาดรัศมี Buffer Zone (หน่วยเป็นเมตร)
+                if buffer_radius > 0:
+                    folium.Circle(
+                        location=[r[lat_c], r[lon_c]], 
+                        radius=buffer_radius,    # กำหนดรัศมีเป็นเมตร
+                        color='#FFEB3B',         # ขอบสีเหลืองเพื่อให้ตัดกับสีเข้มของดาวเทียม
+                        weight=2,
+                        fill=True,
+                        fill_opacity=0.25,       # ความโปร่งแสง
+                        fill_color='#FF9800'     # พื้นที่ด้านในสีส้ม
+                    ).add_to(m)
+
+                # 2. วาดจุดตำแหน่งผู้ป่วย (CircleMarker หน่วยเป็นพิกเซลจอ)
+                folium.CircleMarker(
+                    location=[r[lat_c], r[lon_c]], 
+                    radius=6, 
+                    color='#E91E63',             # จุดผู้ป่วยสีแดงอมชมพูเข้ม
+                    fill=True, 
+                    fill_opacity=1.0,
+                    popup=f"เคสที่ {idx+1}"
+                ).add_to(m)
+
+            folium_static(m, width=1000, height=650)
+        else: 
+            st.warning("⚠️ ไม่พบคอลัมน์พิกัด (Lat/Lon) ในไฟล์ กรุณาตรวจสอบชื่อคอลัมน์")
 
     # 3. Crude Analysis (Bivariate + Manual 2x2)
     elif menu == "🔬 Bivariate Analysis (OR/RR)":
@@ -498,4 +548,4 @@ elif df is not None:
                 
 # --- Footer ---
 st.markdown("---")
-st.markdown("<div style='text-align: center; color: #666;'>Epi-Analytic Pro ODPC8 | พัฒนาโดย กลุ่มระบาดวิทยา</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: #666;'>Epi-Analytic Pro ODPC8 | พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี กรมควบคุมโรค</div>", unsafe_allow_html=True)
