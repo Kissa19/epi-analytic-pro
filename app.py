@@ -210,14 +210,23 @@ elif df is not None:
             max_dt = df_clean[date_col].max()
             
             # 2. Logic การตั้งขอบเขตแบบ Dynamic (ถ้าวิเคราะห์รายชั่วโมง/นาที ไม่ต้องถอยไปถึงต้นวัน)
-            if "Min" in bin_unit or "Hour" in bin_unit:
-                start_range = (min_dt - pd.Timedelta(hours=pad_before)).floor('H')
-                end_range = (max_dt + pd.Timedelta(hours=pad_after)).ceil('H')
-            else:
-                start_range = (min_dt - pd.to_timedelta(pad_before, unit='D')).floor('D')
-                end_range = (max_dt + pd.to_timedelta(pad_after, unit='D')).ceil('D')
+            # --- ส่วนที่ปรับปรุงเพื่อแก้ ValueError ---
+        if not df_clean.empty:
+            min_dt = df_clean[date_col].min()
+            max_dt = df_clean[date_col].max()
             
-            # สร้าง "ไม้บรรทัดเวลา" ที่สมบูรณ์
+            # ปรับ Frequency Aliases ให้เป็นตัวพิมพ์เล็กตามมาตรฐาน Pandas 2.x
+            if "Hour" in bin_unit or "Min" in bin_unit:
+                # ใช้ 'h' สำหรับ Hour และ 'min' สำหรับ Minute
+                start_range = (min_dt - pd.Timedelta(hours=pad_before)).floor('h')
+                end_range = (max_dt + pd.Timedelta(hours=pad_after)).ceil('h')
+            else:
+                # ใช้ 'd' สำหรับ Day
+                start_range = (min_dt - pd.to_timedelta(pad_before, unit='d')).floor('d')
+                end_range = (max_dt + pd.to_timedelta(pad_after, unit='d')).ceil('d')
+            
+            # สร้าง "ไม้บรรทัดเวลา" (Full Range)
+            # หมายเหตุ: freq ใน unit_map ควรเป็นตัวพิมพ์เล็ก เช่น 'h', 'd', 'min'
             full_range = pd.date_range(start=start_range, end=end_range, freq=freq)
 
             # 3. จัดกลุ่มข้อมูลราย Bin
