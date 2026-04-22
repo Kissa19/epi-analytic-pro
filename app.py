@@ -22,40 +22,54 @@ st.set_page_config(
     layout="wide"
 )
 
+# เพิ่มการโหลดฟอนต์ Kanit จาก Google Fonts และบังคับขนาดให้สมดุล
 st.markdown(
     """
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
-        /* ธีมสีชมพู-ขาว กรมควบคุมโรค (DDC Theme) */
+        /* 1. บังคับฟอนต์ Kanit ให้ครอบคลุมทุก Element บนหน้าเว็บ */
+        html, body, [class*="css"], [class*="st-"], div, span, applet, object, iframe,
+        h1, h2, h3, h4, h5, h6, p, blockquote, pre, a, abbr, acronym, address, big, cite, code,
+        del, dfn, em, img, ins, kbd, q, s, samp, small, strike, strong, sub, sup, tt, var,
+        b, u, i, center, dl, dt, dd, ol, ul, li, fieldset, form, label, legend,
+        table, caption, tbody, tfoot, thead, tr, th, td, article, aside, canvas, details, embed, 
+        figure, figcaption, footer, header, hgroup, menu, nav, output, ruby, section, summary,
+        time, mark, audio, video, button, input, select, textarea {
+            font-family: 'Kanit', sans-serif !important;
+        }
+
+        /* 2. ธีมสีกรมควบคุมโรค (ขาว-ชมพู) */
         [data-testid="stSidebar"] {
-            background-color: #FFF0F5 !important; /* พื้นหลัง Sidebar ขาวอมชมพูอ่อน */
+            background-color: #FFF0F5 !important; 
             border-right: 1px solid #F8BBD0;
         }
-        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
-        [data-testid="stSidebar"] label,
-        [data-testid="stSidebar"] h1,
-        [data-testid="stSidebar"] h2,
-        [data-testid="stSidebar"] h3,
-        [data-testid="stSidebar"] span,
-        [data-testid="stSidebar"] .st-at {
-            color: #880E4F !important; /* ตัวหนังสือ Sidebar ชมพูเข้ม */
-            font-weight: 600;
+        [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label {
+            color: #880E4F !important;
         }
-        /* ปุ่มกด (Buttons) */
-        .stButton > button { 
-            background-color: #E91E63 !important; /* สีชมพู กรมควบคุมโรค */
+        .stButton > button {
+            background-color: #E91E63 !important;
             color: #FFFFFF !important;
-            border-radius: 8px; 
-            border: none;
-            font-weight: bold;
+            border-radius: 8px !important;
+            border: none !important;
         }
         .stButton > button:hover {
-            background-color: #C2185B !important; /* ชมพูเข้มขึ้นเมื่อเอาเมาส์ชี้ */
-            color: #FFFFFF !important;
+            background-color: #C2185B !important;
         }
-        /* หัวข้อหลักในหน้าแอป (Headers) */
-        h1, h2, h3 {
-            color: #D81B60 !important;
-        }
+
+        /* 3. ปรับสมดุลขนาดตัวอักษร (Balancing Sizes) */
+        h1 { font-size: 2.0rem !important; color: #D81B60 !important; font-weight: 600 !important; padding-bottom: 0.5rem; }
+        h2 { font-size: 1.6rem !important; color: #D81B60 !important; font-weight: 500 !important; }
+        h3 { font-size: 1.2rem !important; color: #880E4F !important; font-weight: 500 !important; }
+        
+        /* ปรับขนาดเนื้อหาทั่วไป */
+        p, span, label, div { font-size: 0.95rem !important; }
+        
+        /* ปรับขนาดตัวเลข Metric (เช่น Attack Rate) ไม่ให้ล้นกรอบ */
+        [data-testid="stMetricValue"] { font-size: 1.8rem !important; color: #E91E63 !important; font-weight: 600 !important; }
+        [data-testid="stMetricLabel"] { font-size: 1rem !important; font-weight: 500 !important; color: #666 !important; }
+        
+        /* ย่อตัวหนังสือใน Sidebar ลงนิดหน่อยเพื่อความสบายตา */
+        [data-testid="stSidebar"] p, [data-testid="stSidebar"] label { font-size: 0.9rem !important; }
     </style>
     """,
     unsafe_allow_html=True
@@ -257,8 +271,13 @@ elif df is not None:
                 chart_df.columns = [date_col, col_grp, 'Cases']
                 fig = px.bar(chart_df, x=date_col, y='Cases', color=col_grp)
 
-            fig.update_layout(bargap=0.01, xaxis=dict(type='date', tickformat='%d/%m %H:%M'))
-            st.plotly_chart(fig, use_container_width=True)
+            fig.update_layout(
+    font=dict(family="Kanit", size=14, color="#333"), # บังคับฟอนต์ที่นี่
+    bargap=0.01, 
+    xaxis_title="Onset Date/Time",
+    yaxis_title="Number of Cases",
+    hovermode="x unified"
+)
 
     # 4. Spot Map
     # ------------------------------------------
@@ -321,7 +340,7 @@ elif df is not None:
         else: 
             st.warning("⚠️ ไม่พบคอลัมน์พิกัด (Lat/Lon) ในไฟล์ กรุณาตรวจสอบชื่อคอลัมน์")
 
-    # 3. Crude Analysis (Bivariate + Manual 2x2)
+    # 5. Crude Analysis (Bivariate + Manual 2x2)
     elif menu == "🔬 Bivariate Analysis (OR/RR)":
         st.title("🔬 Bivariate Analysis & 2x2 Table")
 
@@ -503,7 +522,7 @@ elif df is not None:
                 else:
                     st.warning("กรุณากรอกตัวเลขจำนวนในตาราง 2x2")
 
-    # 4. Adjusted Analysis
+    # 6. Adjusted Analysis
     elif menu == "🧬 Multiple Logistic Regression (AOR)":
         st.title("🧬 Multiple Logistic Regression (AOR)")
         st.markdown("วิเคราะห์ปัจจัยเสี่ยงโดยควบคุมตัวแปรกวน (แสดงค่า AOR และ 95% CI)")
