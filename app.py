@@ -14,7 +14,7 @@ import requests
 import math
 
 # ==========================================
-# 1. CONFIGURATION & STYLING
+# 1. CONFIGURATION & STYLING (DDC PINK-WHITE)
 # ==========================================
 st.set_page_config(
     page_title="Epi-Analytic Pro ODPC8", 
@@ -22,58 +22,155 @@ st.set_page_config(
     layout="wide"
 )
 
-# เพิ่มการโหลดฟอนต์ Kanit จาก Google Fonts และบังคับขนาดให้สมดุล
+# บังคับฟอนต์ Kanit และธีมสีกรมควบคุมโรค
 st.markdown(
     """
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
-        /* 1. บังคับฟอนต์ Kanit ให้ครอบคลุมทุก Element บนหน้าเว็บ */
-        html, body, [class*="css"], [class*="st-"], div, span, applet, object, iframe,
-        h1, h2, h3, h4, h5, h6, p, blockquote, pre, a, abbr, acronym, address, big, cite, code,
-        del, dfn, em, img, ins, kbd, q, s, samp, small, strike, strong, sub, sup, tt, var,
-        b, u, i, center, dl, dt, dd, ol, ul, li, fieldset, form, label, legend,
-        table, caption, tbody, tfoot, thead, tr, th, td, article, aside, canvas, details, embed, 
-        figure, figcaption, footer, header, hgroup, menu, nav, output, ruby, section, summary,
-        time, mark, audio, video, button, input, select, textarea {
+        html, body, [class*="css"], [class*="st-"], div, span, label, p, h1, h2, h3 {
             font-family: 'Kanit', sans-serif !important;
         }
-
-        /* 2. ธีมสีกรมควบคุมโรค (ขาว-ชมพู) */
+        /* ธีมสี Sidebar */
         [data-testid="stSidebar"] {
             background-color: #FFF0F5 !important; 
             border-right: 1px solid #F8BBD0;
         }
         [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label {
             color: #880E4F !important;
+            font-weight: 500;
         }
+        /* ปุ่มกด */
         .stButton > button {
             background-color: #E91E63 !important;
             color: #FFFFFF !important;
             border-radius: 8px !important;
             border: none !important;
+            width: 100%;
         }
         .stButton > button:hover {
             background-color: #C2185B !important;
         }
-
-        /* 3. ปรับสมดุลขนาดตัวอักษร (Balancing Sizes) */
-        h1 { font-size: 2.0rem !important; color: #D81B60 !important; font-weight: 600 !important; padding-bottom: 0.5rem; }
-        h2 { font-size: 1.6rem !important; color: #D81B60 !important; font-weight: 500 !important; }
-        h3 { font-size: 1.2rem !important; color: #880E4F !important; font-weight: 500 !important; }
+        /* หัวข้อ */
+        h1, h2, h3 { color: #D81B60 !important; }
         
-        /* ปรับขนาดเนื้อหาทั่วไป */
-        p, span, label, div { font-size: 0.95rem !important; }
-        
-        /* ปรับขนาดตัวเลข Metric (เช่น Attack Rate) ไม่ให้ล้นกรอบ */
-        [data-testid="stMetricValue"] { font-size: 1.8rem !important; color: #E91E63 !important; font-weight: 600 !important; }
-        [data-testid="stMetricLabel"] { font-size: 1rem !important; font-weight: 500 !important; color: #666 !important; }
-        
-        /* ย่อตัวหนังสือใน Sidebar ลงนิดหน่อยเพื่อความสบายตา */
-        [data-testid="stSidebar"] p, [data-testid="stSidebar"] label { font-size: 0.9rem !important; }
+        /* สไตล์กล่องดาวน์โหลดไฟล์ตัวอย่าง */
+        .template-box {
+            background-color: #ffffff;
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid #F8BBD0;
+            margin-bottom: 10px;
+        }
+        .template-link {
+            color: #E91E63 !important;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        .template-link:hover {
+            text-decoration: underline;
+        }
     </style>
     """,
     unsafe_allow_html=True
 )
+
+# ==========================================
+# 2. SESSION STATE
+# ==========================================
+if 'registered' not in st.session_state:
+    st.session_state['registered'] = False
+
+# ==========================================
+# 3. HELPER FUNCTIONS
+# ==========================================
+def load_data(file):
+    try:
+        if file.name.endswith('.csv'): return pd.read_csv(file)
+        else: return pd.read_excel(file)
+    except Exception as e:
+        st.error(f"ไม่สามารถโหลดไฟล์ได้: {e}")
+        return None
+
+def smart_map_variable(series):
+    unique_vals = set(series.dropna().unique())
+    if unique_vals.issubset({1, 2, 1.0, 2.0, '1', '2'}):
+        return pd.to_numeric(series, errors='coerce').map({1: 1, 2: 0, 1.0: 1, 2.0: 0})
+    return series
+
+def calculate_mid_p(a, b, c, d):
+    n = a + b + c + d
+    if n == 0: return 1.0
+    k, m = a + c, a + b
+    p_obs = hypergeom.pmf(a, n, k, m)
+    p_lower = hypergeom.cdf(a, n, k, m)
+    p_upper = hypergeom.sf(a-1, n, k, m)
+    mid_p = 2 * (min(p_lower, p_upper) - 0.5 * p_obs)
+    return max(min(mid_p, 1.0), 0.0)
+
+# ==========================================
+# 4. SIDEBAR NAVIGATION
+# ==========================================
+try:
+    st.sidebar.image("odpc8_logo.png", use_container_width=True)
+except:
+    st.sidebar.title("🏥 ODPC8 Udon Thani")
+
+st.sidebar.markdown("---")
+
+if not st.session_state['registered']:
+    menu = "📝 ลงทะเบียนใช้งาน"
+    st.sidebar.warning("⚠️ โปรดลงทะเบียนเพื่อปลดล็อกเมนูวิเคราะห์")
+else:
+    menu = st.sidebar.radio(
+        "เลือกหัวข้อการวิเคราะห์", 
+        ["👥 ประชากรและอัตราป่วย (Attack Rate)",
+         "👤 พรรณนา (Descriptive)", 
+         "📊 สร้าง Epi Curve (Time)", 
+         "🗺️ Spot Map (Place)",
+         "🔬 Bivariate Analysis (OR/RR)", 
+         "🧬 Multiple Logistic Regression (AOR)",
+         "📝 ข้อมูลการลงทะเบียน (แก้ไข)"]
+    )
+
+# ==========================================
+# 5. DATA SOURCE & TEMPLATES
+# ==========================================
+df = None
+if st.session_state['registered']:
+    st.sidebar.divider()
+    st.sidebar.subheader("💾 แหล่งข้อมูล (Data Source)")
+    source_choice = st.sidebar.radio("เลือกแหล่งข้อมูล:", ["อัปโหลดไฟล์ (Excel/CSV)", "Google Sheets"])
+    
+    if source_choice == "อัปโหลดไฟล์ (Excel/CSV)":
+        uploaded_file = st.sidebar.file_uploader("📂 เลือกไฟล์ข้อมูล", type=['xlsx', 'csv'])
+        if uploaded_file:
+            df = load_data(uploaded_file)
+    else:
+        sheet_url = st.sidebar.text_input("🔗 ลิงก์ Google Sheets:")
+        if sheet_url:
+            try:
+                conn = st.connection("gsheets", type=GSheetsConnection)
+                df = conn.read(spreadsheet=sheet_url)
+                if st.sidebar.button("🔄 อัปเดตข้อมูล"):
+                    st.cache_data.clear()
+                    st.rerun()
+            except Exception as e:
+                st.error(f"เชื่อมต่อล้มเหลว: {e}")
+
+    # --- ส่วนที่เพิ่มใหม่: ลิงก์ไฟล์ตัวอย่าง ---
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📥 ไฟล์ตัวอย่าง (Templates)")
+    
+    st.sidebar.markdown(f"""
+    <div class="template-box">
+        <p style="margin-bottom:5px; font-size:0.85rem; color:#666;">สำหรับทดลองระบบ:</p>
+        <a class="template-link" href="https://docs.google.com/spreadsheets/d/13P9k7ucYHjbNQ88EucKXnR7JvPwGLEHF/edit?usp=drive_link" target="_blank">📄 1. พรรณนา/Daily Curve/Spot Map</a><br><br>
+        <a class="template-link" href="https://docs.google.com/spreadsheets/d/1kZSskpErufY_9qTl-_1TZaVymGMnNikm/edit?usp=drive_link" target="_blank">🕒 2. Hourly Epidemic Curve</a><br><br>
+        <a class="template-link" href="https://docs.google.com/spreadsheets/d/1TPJDOoIWCiZBtsnXDlhcHcN5IM27TBOK/edit?usp=drive_link" target="_blank">🔬 3. Case Control Analysis</a><br><br>
+        <a class="template-link" href="https://docs.google.com/spreadsheets/d/1HR57-mVqo9TceAgF1tpzWvLQi662akzw/edit?usp=drive_link" target="_blank">📊 4. Cohort Study Analysis</a>
+    </div>
+    """, unsafe_allow_html=True)
 # ==========================================
 # 2. SESSION STATE
 # ==========================================
