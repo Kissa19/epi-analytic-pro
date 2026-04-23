@@ -71,7 +71,7 @@ st.markdown(
         [data-testid="stMetricLabel"] { font-size: 1rem !important; font-weight: 500 !important; color: #666 !important; }
         [data-testid="stSidebar"] p, [data-testid="stSidebar"] label { font-size: 0.9rem !important; }
 
-        /* สไตล์กล่องดาวน์โหลดไฟล์ตัวอย่าง */
+        /* สไตล์กล่องดาวน์โหลดและคู่มือ */
         .template-box {
             background-color: #ffffff;
             padding: 12px;
@@ -84,6 +84,8 @@ st.markdown(
             text-decoration: none;
             font-size: 0.9rem;
             font-weight: 500;
+            display: block;
+            margin-bottom: 8px;
         }
         .template-link:hover {
             text-decoration: underline;
@@ -163,7 +165,6 @@ df = None
 if st.session_state['registered']:
     st.sidebar.divider()
     st.sidebar.subheader("💾 แหล่งข้อมูล (Data Source)")
-    # เพิ่ม key="data_source_radio" 
     source_choice = st.sidebar.radio(
         "เลือกแหล่งข้อมูล:", 
         ["อัปโหลดไฟล์ (Excel/CSV)", "Google Sheets"],
@@ -199,15 +200,25 @@ if st.session_state['registered']:
                 st.error(f"เชื่อมต่อล้มเหลว: {e}")
                 st.info("💡 คำแนะนำ: โปรดตรวจสอบว่าลิงก์ Google Sheets เปิดสิทธิ์การแชร์เป็น 'ทุกคนที่มีลิงก์' (Anyone with the link) แล้วหรือไม่")
 
-    # --- ลิงก์ไฟล์ตัวอย่าง ---
+    # --- ลิงก์คู่มือการใช้งาน ---
     st.sidebar.markdown("---")
+    st.sidebar.subheader("📖 คู่มือการใช้งาน (Manual)")
+    st.sidebar.markdown(f"""
+    <div class="template-box" style="background-color: #FFF0F5; border-color: #E91E63;">
+        <a class="template-link" href="https://drive.google.com/file/d/12AWteziDcdW50v3CXo7dWnjihnM2dtif/view?usp=drive_link" target="_blank" style="font-size: 1rem; color: #D81B60 !important; font-weight: 600; text-align: center; margin-bottom: 0;">
+            🖥️ เปิดสไลด์คู่มือการใช้งานระบบ
+        </a>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # --- ลิงก์ไฟล์ตัวอย่าง ---
     st.sidebar.subheader("📥 ไฟล์ตัวอย่าง (Templates)")
     st.sidebar.markdown(f"""
     <div class="template-box">
-        <p style="margin-bottom:5px; font-size:0.85rem; color:#666;">ดาวน์โหลดไฟล์สำหรับทดลองระบบ:</p>
-        <a class="template-link" href="https://docs.google.com/spreadsheets/d/13P9k7ucYHjbNQ88EucKXnR7JvPwGLEHF/edit?usp=drive_link" target="_blank">📄 1. พรรณนา/Daily Curve/Spot Map</a><br><br>
-        <a class="template-link" href="https://docs.google.com/spreadsheets/d/1kZSskpErufY_9qTl-_1TZaVymGMnNikm/edit?usp=drive_link" target="_blank">🕒 2. Hourly Epidemic Curve</a><br><br>
-        <a class="template-link" href="https://docs.google.com/spreadsheets/d/1TPJDOoIWCiZBtsnXDlhcHcN5IM27TBOK/edit?usp=drive_link" target="_blank">🔬 3. Case Control Analysis</a><br><br>
+        <p style="margin-bottom:8px; font-size:0.85rem; color:#666;">ดาวน์โหลดไฟล์สำหรับทดลองระบบ:</p>
+        <a class="template-link" href="https://docs.google.com/spreadsheets/d/13P9k7ucYHjbNQ88EucKXnR7JvPwGLEHF/edit?usp=drive_link" target="_blank">📄 1. พรรณนา/Daily Curve/Spot Map</a>
+        <a class="template-link" href="https://docs.google.com/spreadsheets/d/1kZSskpErufY_9qTl-_1TZaVymGMnNikm/edit?usp=drive_link" target="_blank">🕒 2. Hourly Epidemic Curve</a>
+        <a class="template-link" href="https://docs.google.com/spreadsheets/d/1TPJDOoIWCiZBtsnXDlhcHcN5IM27TBOK/edit?usp=drive_link" target="_blank">🔬 3. Case Control Analysis</a>
         <a class="template-link" href="https://docs.google.com/spreadsheets/d/1HR57-mVqo9TceAgF1tpzWvLQi662akzw/edit?usp=drive_link" target="_blank">📊 4. Cohort Study Analysis</a>
     </div>
     """, unsafe_allow_html=True)
