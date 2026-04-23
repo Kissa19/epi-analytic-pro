@@ -12,6 +12,7 @@ import folium
 from streamlit_folium import folium_static
 import requests
 import math
+import re
 
 # ==========================================
 # 1. CONFIGURATION & STYLING (DDC PINK-WHITE)
@@ -177,13 +178,26 @@ if st.session_state['registered']:
         sheet_url = st.sidebar.text_input("🔗 ลิงก์ Google Sheets:")
         if sheet_url:
             try:
-                conn = st.connection("gsheets", type=GSheetsConnection)
-                df = conn.read(spreadsheet=sheet_url)
+                # สกัด ID และใช้วิธี Export เป็น CSV เพื่อป้องกัน HTTP 404 Error
+                if "docs.google.com/spreadsheets" in sheet_url:
+                    match = re.search(r'/d/([a-zA-Z0-9-_]+)', sheet_url)
+                    if match:
+                        sheet_id = match.group(1)
+                        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
+                        df = pd.read_csv(csv_url)
+                    else:
+                        conn = st.connection("gsheets", type=GSheetsConnection)
+                        df = conn.read(spreadsheet=sheet_url)
+                else:
+                    conn = st.connection("gsheets", type=GSheetsConnection)
+                    df = conn.read(spreadsheet=sheet_url)
+                    
                 if st.sidebar.button("🔄 อัปเดตข้อมูล"):
                     st.cache_data.clear()
                     st.rerun()
             except Exception as e:
                 st.error(f"เชื่อมต่อล้มเหลว: {e}")
+                st.info("💡 คำแนะนำ: โปรดตรวจสอบว่าลิงก์ Google Sheets เปิดสิทธิ์การแชร์เป็น 'ทุกคนที่มีลิงก์' (Anyone with the link) แล้วหรือไม่")
 
     # --- ลิงก์ไฟล์ตัวอย่าง ---
     st.sidebar.markdown("---")
@@ -302,7 +316,6 @@ elif df is not None:
         date_col = st.sidebar.selectbox("คอลัมน์วันเริ่มป่วย", df.columns)
         col_grp = st.sidebar.selectbox("ตัวแปรแยกกลุ่มสี:", ["<none>"] + list(df.columns))
         
-        # แก้ไขปัญหา ValueError ด้วยตัวพิมพ์เล็ก
         unit_map = {"Hour": "h", "Day": "d", "Week": "W", "Month": "ME", "30 Min": "30min"}
         bin_unit = st.sidebar.selectbox("หน่วยเวลา", list(unit_map.keys()), index=0)
         bin_size = st.sidebar.number_input("ขนาด Bin", min_value=1, value=1)
@@ -338,7 +351,6 @@ elif df is not None:
                 chart_df.columns = [date_col, col_grp, 'Cases']
                 fig = px.bar(chart_df, x=date_col, y='Cases', color=col_grp, color_discrete_sequence=px.colors.sequential.RdPu[::-1])
 
-            # คง Layout เดิมที่เสถียร
             fig.update_layout(
                 bargap=0.01, 
                 xaxis=dict(type='date', tickformat='%d/%m %H:%M'),
