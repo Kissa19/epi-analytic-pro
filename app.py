@@ -5,7 +5,7 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from datetime import timedelta
 import scipy.stats as stats
-from scipy.stats import hypergeom
+from scipy.stats import hypergeom, chi2_contingency
 from streamlit_gsheets import GSheetsConnection
 import plotly.express as px
 import folium
@@ -13,10 +13,10 @@ from streamlit_folium import folium_static
 import requests
 import math
 import re
-import google.generativeai as genai
+import google.generativeai as genai # นำเข้าไลบรารี AI
 
 # ==========================================
-# 1. CONFIGURATION & STYLING (DDC PINK-WHITE)
+# 1. CONFIGURATION & STYLING (MODERN SARABUN)
 # ==========================================
 st.set_page_config(
     page_title="Epi-Analytic Pro ODPC8", 
@@ -24,10 +24,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# บังคับฟอนต์ Kanit และธีมสีกรมควบคุมโรค
+# บังคับฟอนต์ Sarabun และธีม Modern UI
 st.markdown(
     """
-    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         html, body, [class*="css"], [class*="st-"], div, span, applet, object, iframe,
         h1, h2, h3, h4, h5, h6, p, blockquote, pre, a, abbr, acronym, address, big, cite, code,
@@ -36,53 +36,72 @@ st.markdown(
         table, caption, tbody, tfoot, thead, tr, th, td, article, aside, canvas, details, embed, 
         figure, figcaption, footer, header, hgroup, menu, nav, output, ruby, section, summary,
         time, mark, audio, video, button, input, select, textarea {
-            font-family: 'Kanit', sans-serif !important;
+            font-family: 'Sarabun', sans-serif !important;
         }
 
+        p, span, label, div, th, td { font-size: 1.15rem !important; }
+        h1 { font-size: 2.6rem !important; color: #D81B60 !important; font-weight: 700 !important; padding-bottom: 0.5rem; letter-spacing: -0.5px;}
+        h2 { font-size: 2.0rem !important; color: #D81B60 !important; font-weight: 600 !important; }
+        h3 { font-size: 1.6rem !important; color: #880E4F !important; font-weight: 600 !important; }
+
+        [data-testid="stMetricValue"] { font-size: 2.6rem !important; color: #E91E63 !important; font-weight: 700 !important; }
+        [data-testid="stMetricLabel"] { font-size: 1.2rem !important; font-weight: 500 !important; color: #666 !important; }
+
         [data-testid="stSidebar"] {
-            background-color: #FFF0F5 !important; 
-            border-right: 1px solid #F8BBD0;
+            background-color: #FFFFFF !important; 
+            box-shadow: 2px 0 15px rgba(0,0,0,0.04);
+            border: none !important;
         }
-        [data-testid="stSidebar"] p, [data-testid="stSidebar"] span, [data-testid="stSidebar"] label {
-            color: #880E4F !important;
+        [data-testid="stSidebar"] p, [data-testid="stSidebar"] label {
+            color: #4A4A4A !important;
+            font-size: 1.1rem !important;
         }
         
         .stButton > button {
-            background-color: #E91E63 !important;
+            background: linear-gradient(135deg, #E91E63 0%, #C2185B 100%) !important;
             color: #FFFFFF !important;
-            border-radius: 8px !important;
+            border-radius: 12px !important;
             border: none !important;
             width: 100%;
+            padding: 10px 0 !important;
+            font-size: 1.2rem !important;
+            font-weight: 600 !important;
+            box-shadow: 0 4px 10px rgba(233, 30, 99, 0.25);
+            transition: all 0.3s ease;
         }
         .stButton > button:hover {
-            background-color: #C2185B !important;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(233, 30, 99, 0.4);
         }
-
-        h1 { font-size: 2.0rem !important; color: #D81B60 !important; font-weight: 600 !important; padding-bottom: 0.5rem; }
-        h2 { font-size: 1.6rem !important; color: #D81B60 !important; font-weight: 500 !important; }
-        h3 { font-size: 1.2rem !important; color: #880E4F !important; font-weight: 500 !important; }
-        p, span, label, div { font-size: 0.95rem !important; }
-        
-        [data-testid="stMetricValue"] { font-size: 1.8rem !important; color: #E91E63 !important; font-weight: 600 !important; }
-        [data-testid="stMetricLabel"] { font-size: 1rem !important; font-weight: 500 !important; color: #666 !important; }
-        [data-testid="stSidebar"] p, [data-testid="stSidebar"] label { font-size: 0.9rem !important; }
 
         .template-box {
             background-color: #ffffff;
-            padding: 12px;
-            border-radius: 12px;
-            border: 1px solid #F8BBD0;
-            margin-bottom: 10px;
+            padding: 18px;
+            border-radius: 16px;
+            border: 1px solid #f0f0f0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+            margin-bottom: 12px;
+            transition: transform 0.2s ease;
+        }
+        .template-box:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.06);
         }
         .template-link {
-            color: #E91E63 !important;
+            color: #D81B60 !important;
             text-decoration: none;
-            font-size: 0.9rem;
+            font-size: 1.1rem;
             font-weight: 500;
             display: block;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: background 0.2s;
         }
-        .template-link:hover { text-decoration: underline; }
+        .template-link:hover {
+            background-color: #FFF0F5;
+            text-decoration: none;
+        }
         
         .ai-summary-box {
             background-color: #FDFEFE;
@@ -98,7 +117,7 @@ st.markdown(
 )
 
 # ==========================================
-# 2. SESSION STATE & AI FUNCTION
+# 2. SESSION STATE & AI HELPER
 # ==========================================
 if 'registered' not in st.session_state:
     st.session_state['registered'] = False
@@ -108,21 +127,12 @@ def generate_ai_summary(api_key, context_text, menu_name):
         return "⚠️ กรุณาระบุ Gemini API Key ในแถบเมนูด้านซ้ายเพื่อเปิดใช้งานผู้ช่วย AI"
     try:
         genai.configure(api_key=api_key)
-        
-        # 💡 ค้นหาชื่อโมเดลที่ API Key นี้สามารถใช้งานได้อัตโนมัติ
-        valid_models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                valid_models.append(m.name)
-                
-        if not valid_models:
-            return "❌ API Key ของท่านไม่ได้รับสิทธิ์ให้ใช้งานโมเดลใดๆ เลย กรุณาตรวจสอบที่ Google AI Studio"
-            
-        # เลือกใช้ gemini-1.5-flash ก่อนถ้ามีในระบบ ถ้าไม่มีให้ใช้ตัวแรกที่ระบบอนุญาต
+        # ค้นหาโมเดลที่ใช้งานได้อัตโนมัติ เพื่อป้องกัน Error 404
+        valid_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        if not valid_models: return "❌ API Key ของท่านไม่มีสิทธิ์ใช้งานโมเดลใดๆ"
         target_model = next((m for m in valid_models if '1.5-flash' in m), valid_models[0])
         
         model = genai.GenerativeModel(target_model)
-        
         prompt = f"""
         คุณคือนักระบาดวิทยาผู้เชี่ยวชาญ กรุณาสรุปผลการวิเคราะห์ข้อมูลต่อไปนี้จากเมนู '{menu_name}' 
         เพื่อนำไปเขียนในรายงานการสอบสวนการระบาดของโรค (ขอแบบสั้น กระชับ เป็นทางการ ตรงประเด็น)
@@ -135,16 +145,10 @@ def generate_ai_summary(api_key, context_text, menu_name):
     except Exception as e:
         return f"❌ ไม่สามารถเชื่อมต่อ AI ได้: {e}"
 
-# ตั้งค่าสำหรับปุ่ม Export รูปภาพความละเอียดสูง
+# ตั้งค่าสำหรับปุ่ม Export รูปภาพแผนภูมิความละเอียดสูง
 high_res_config = {
     'displaylogo': False,
-    'toImageButtonOptions': {
-        'format': 'png', 
-        'filename': 'Epi_Chart_Export',
-        'height': 720,
-        'width': 1280,
-        'scale': 2 # คูณ 2 เพื่อให้ภาพคมชัดระดับ HD
-    }
+    'toImageButtonOptions': {'format': 'png', 'filename': 'Epi_Chart_Export', 'height': 720, 'width': 1280, 'scale': 2}
 }
 
 # ==========================================
@@ -152,7 +156,11 @@ high_res_config = {
 # ==========================================
 def load_data(file):
     try:
-        if file.name.endswith('.csv'): return pd.read_csv(file)
+        if file.name.endswith('.csv'):
+            try: return pd.read_csv(file, encoding='utf-8')
+            except UnicodeDecodeError:
+                file.seek(0)
+                return pd.read_csv(file, encoding='cp874')
         else: return pd.read_excel(file)
     except Exception as e:
         st.error(f"ไม่สามารถโหลดไฟล์ได้: {e}")
@@ -189,7 +197,6 @@ if not st.session_state['registered']:
     menu = "📝 ลงทะเบียนใช้งาน"
     st.sidebar.warning("⚠️ โปรดลงทะเบียนเพื่อปลดล็อกเมนูวิเคราะห์")
 else:
-    # เพิ่มช่องใส่ API Key สำหรับ AI
     st.sidebar.subheader("🤖 ผู้ช่วย AI สรุปผล")
     api_key_input = st.sidebar.text_input("Gemini API Key", type="password", help="รับ Key ได้ฟรีที่ Google AI Studio")
     st.sidebar.markdown("---")
@@ -207,7 +214,7 @@ else:
     )
 
 # ==========================================
-# 5. DATA SOURCE, MANUAL & TEMPLATES
+# 5. DATA SOURCE & TEMPLATES
 # ==========================================
 df = None
 if st.session_state['registered']:
@@ -226,8 +233,7 @@ if st.session_state['registered']:
                     match = re.search(r'/d/([a-zA-Z0-9-_]+)', sheet_url)
                     if match:
                         sheet_id = match.group(1)
-                        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
-                        df = pd.read_csv(csv_url)
+                        df = pd.read_csv(f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv")
                     else:
                         conn = st.connection("gsheets", type=GSheetsConnection)
                         df = conn.read(spreadsheet=sheet_url)
@@ -236,17 +242,16 @@ if st.session_state['registered']:
                     df = conn.read(spreadsheet=sheet_url)
                     
                 if st.sidebar.button("🔄 อัปเดตข้อมูล"):
-                    st.cache_data.clear()
-                    st.rerun()
+                    st.cache_data.clear(); st.rerun()
             except Exception as e:
                 st.error(f"เชื่อมต่อล้มเหลว: {e}")
-                st.info("💡 คำแนะนำ: โปรดตรวจสอบว่าลิงก์ Google Sheets เปิดสิทธิ์การแชร์เป็น 'ทุกคนที่มีลิงก์' (Anyone with the link) แล้วหรือไม่")
+                st.info("💡 คำแนะนำ: โปรดตรวจสอบว่าเปิดสิทธิ์การแชร์เป็น 'ทุกคนที่มีลิงก์' แล้วหรือไม่")
 
     st.sidebar.markdown("---")
     st.sidebar.subheader("📖 คู่มือการใช้งาน (Manual)")
     st.sidebar.markdown(f"""
     <div class="template-box" style="background-color: #FFF0F5; border-color: #E91E63;">
-        <a class="template-link" href="https://drive.google.com/file/d/12AWteziDcdW50v3CXo7dWnjihnM2dtif/view?usp=drive_link" target="_blank" style="font-size: 1rem; color: #D81B60 !important; font-weight: 600; text-align: center; margin-bottom: 0;">
+        <a class="template-link" href="https://drive.google.com/file/d/12AWteziDcdW50v3CXo7dWnjihnM2dtif/view?usp=drive_link" target="_blank" style="font-size: 1.15rem; color: #D81B60 !important; font-weight: 600; text-align: center; margin-bottom: 0;">
             🖥️ เปิดสไลด์คู่มือการใช้งานระบบ
         </a>
     </div>
@@ -255,7 +260,7 @@ if st.session_state['registered']:
     st.sidebar.subheader("📥 ไฟล์ตัวอย่าง (Templates)")
     st.sidebar.markdown(f"""
     <div class="template-box">
-        <p style="margin-bottom:8px; font-size:0.85rem; color:#666;">ดาวน์โหลดไฟล์สำหรับทดลองระบบ:</p>
+        <p style="margin-bottom:8px; font-size:1rem; color:#666;">ดาวน์โหลดไฟล์สำหรับทดลองระบบ:</p>
         <a class="template-link" href="https://docs.google.com/spreadsheets/d/13P9k7ucYHjbNQ88EucKXnR7JvPwGLEHF/edit?usp=drive_link" target="_blank">📄 1. พรรณนา/Daily Curve/Spot Map</a>
         <a class="template-link" href="https://docs.google.com/spreadsheets/d/1kZSskpErufY_9qTl-_1TZaVymGMnNikm/edit?usp=drive_link" target="_blank">🕒 2. Hourly Epidemic Curve</a>
         <a class="template-link" href="https://docs.google.com/spreadsheets/d/1TPJDOoIWCiZBtsnXDlhcHcN5IM27TBOK/edit?usp=drive_link" target="_blank">🔬 3. Case Control Analysis</a>
@@ -307,14 +312,16 @@ elif df is not None:
             
             c_res1, c_res2 = st.columns(2)
             ar_sex_str, ar_age_str = "", ""
-            
             with c_res1:
                 st.markdown("**Sex-Specific Attack Rate**")
                 if sex_c:
                     df['sex_temp'] = df[sex_c].astype(str).str.strip().replace({'1':'ชาย','2':'หญิง','1.0':'ชาย','2.0':'หญิง'})
                     m_case = len(df[df['sex_temp'] == 'ชาย'])
                     f_case = len(df[df['sex_temp'] == 'หญิง'])
-                    ar_sex = pd.DataFrame({"เพศ": ["ชาย", "หญิง"], "ป่วย (n)": [m_case, f_case], "ประชากร": [pop_male, pop_female], "AR (%)": [m_case/pop_male*100, f_case/pop_female*100]})
+                    ar_sex = pd.DataFrame({
+                        "เพศ": ["ชาย", "หญิง"], "ป่วย (n)": [m_case, f_case], 
+                        "ประชากร": [pop_male, pop_female], "AR (%)": [m_case/pop_male*100, f_case/pop_female*100]
+                    })
                     st.table(ar_sex.style.format({"AR (%)": "{:.2f}"}))
                     ar_sex_str = ar_sex.to_string()
             with c_res2:
@@ -365,7 +372,7 @@ elif df is not None:
             s_df_str = s_df.to_string()
             
             fig_s = px.bar(s_df, x="%", y="อาการ", orientation='h', text_auto='.1f', color_discrete_sequence=['#E91E63'])
-            fig_s.update_layout(font=dict(family="Kanit", size=16, color="#4A4A4A"), title="แผนภูมิแท่งแนวนอนแสดงร้อยละของอาการ")
+            fig_s.update_layout(font=dict(family="Sarabun", size=16, color="#4A4A4A"), title="แผนภูมิแท่งแนวนอนแสดงร้อยละของอาการ")
             
             st.plotly_chart(fig_s, use_container_width=True, config=high_res_config)
             st.caption("📸 คลิกที่ไอคอนกล้องถ่ายรูปมุมขวาบนของแผนภูมิแท่ง เพื่อดาวน์โหลดรูปภาพความละเอียดสูง")
@@ -377,16 +384,16 @@ elif df is not None:
                 st.markdown(f"<div class='ai-summary-box'><b>🤖 AI Summary:</b><br>{summary}</div>", unsafe_allow_html=True)
 
     # ------------------------------------------
-    # 6.3 Epidemic Curve
+    # 6.3 Epidemic Curve (Advanced Range)
     # ------------------------------------------
     elif menu == "📊 สร้าง Epi Curve (Time)":
         st.title("📊 Interactive Epidemic Curve")
         date_col = st.sidebar.selectbox("คอลัมน์วันเริ่มป่วย", df.columns)
         col_grp = st.sidebar.selectbox("ตัวแปรแยกกลุ่มสี:", ["<none>"] + list(df.columns))
         
-        # ฟีเจอร์ให้ผู้ใช้เลือกสีแผนภูมิแท่งเองได้
-        custom_color = st.sidebar.color_picker("🎨 เลือกสีแผนภูมิแท่ง", "#E91E63")
-        
+        # ฟีเจอร์เลือกสีแผนภูมิแท่งเองได้
+        custom_color = st.sidebar.color_picker("🎨 เลือกสีแผนภูมิแท่งหลัก", "#E91E63")
+
         unit_map = {"Hour": "h", "Day": "d", "Week": "W", "Month": "ME", "30 Min": "30min"}
         bin_unit = st.sidebar.selectbox("หน่วยเวลา", list(unit_map.keys()), index=0)
         bin_size = st.sidebar.number_input("ขนาด Bin", min_value=1, value=1)
@@ -422,7 +429,7 @@ elif df is not None:
                 fig = px.bar(chart_df, x=date_col, y='Cases', color=col_grp, color_discrete_sequence=px.colors.sequential.RdPu[::-1])
 
             fig.update_layout(
-                font=dict(family="Kanit", size=16, color="#4A4A4A"),
+                font=dict(family="Sarabun", size=16, color="#4A4A4A"),
                 title="แผนภูมิแท่งแสดงการกระจายตัวของผู้ป่วยตามเวลาเริ่มป่วย (Epidemic Curve)",
                 bargap=0.01, 
                 xaxis=dict(type='date', tickformat='%d/%m %H:%M'),
@@ -444,7 +451,7 @@ elif df is not None:
             st.error("❌ ไม่สามารถวิเคราะห์ได้ เนื่องจากรูปแบบวันที่ในไฟล์ไม่ถูกต้อง")
 
     # ------------------------------------------
-    # 6.4 Spot Map (Satellite & Buffer Zone)
+    # 6.4 Spot Map
     # ------------------------------------------
     elif menu == "🗺️ Spot Map (Place)":
         st.title("🗺️ Spot Map - GIS Analytics")
@@ -495,7 +502,7 @@ elif df is not None:
                 ).add_to(m)
 
             folium_static(m, width=1000, height=650)
-            st.caption("💡 แนะนำให้ใช้ฟังก์ชัน Screen Capture (Print Screen) ของคอมพิวเตอร์ เพื่อบันทึกภาพแผนที่")
+            st.caption("💡 แนะนำให้ใช้ฟังก์ชัน Screen Capture ของคอมพิวเตอร์ เพื่อบันทึกภาพแผนที่")
 
             if st.button("✨ ให้ AI ช่วยสรุปผล", key="ai_map"):
                 with st.spinner("AI กำลังวิเคราะห์และสรุปผล..."):
@@ -509,31 +516,155 @@ elif df is not None:
     # 6.5 Bivariate Analysis
     # ------------------------------------------
     elif menu == "🔬 Bivariate Analysis (OR/RR)":
-        st.title("🔬 Bivariate Analysis")
-        out_v = st.selectbox("Outcome", df.columns)
-        exp_list = st.multiselect("Exposures", [c for c in df.columns if c != out_v])
-        
-        if st.button("🚀 ประมวลผล"):
-            results = []
-            for e in exp_list:
-                temp = df[[out_v, e]].copy().dropna()
-                temp[out_v], temp[e] = smart_map_variable(temp[out_v]), smart_map_variable(temp[e])
-                a = len(temp[(temp[e]==1) & (temp[out_v]==1)])
-                b = len(temp[(temp[e]==1) & (temp[out_v]==0)])
-                c = len(temp[(temp[e]==0) & (temp[out_v]==1)])
-                d = len(temp[(temp[e]==0) & (temp[out_v]==0)])
-                or_val = (a*d)/(b*c) if (b*c)>0 else 0
-                results.append({"ปัจจัย": e, "OR": or_val, "Mid-P": calculate_mid_p(a,b,c,d)})
-            
-            res_df = pd.DataFrame(results)
-            st.table(res_df.style.format({"OR": "{:.2f}", "Mid-P": "{:.4f}"}))
-            st.session_state['bivariate_res'] = res_df.to_string()
+        st.title("🔬 Bivariate Analysis & 2x2 Table")
 
-        if 'bivariate_res' in st.session_state:
-            if st.button("✨ ให้ AI ช่วยสรุปผล", key="ai_biv"):
-                with st.spinner("AI กำลังวิเคราะห์และสรุปผล..."):
-                    summary = generate_ai_summary(api_key_input, st.session_state['bivariate_res'], "Bivariate Analysis (OR)")
-                    st.markdown(f"<div class='ai-summary-box'><b>🤖 AI Summary:</b><br>{summary}</div>", unsafe_allow_html=True)
+        tab1, tab2 = st.tabs(["📁 วิเคราะห์จากไฟล์ข้อมูล", "🔢 กรอกข้อมูลเอง (Manual 2x2)"])
+
+        with tab1:
+            st.subheader("📁 วิเคราะห์ปัจจัยเสี่ยงจากไฟล์ที่อัปโหลด")
+            if df is not None:
+                out_v = st.selectbox("ตัวแปรตาม (Outcome)", df.columns, key="file_out")
+                design = st.radio("ประเภทการศึกษา", ["Case-control Study (OR)", "Cohort Study (RR)"], key="file_design")
+                exp_list = st.multiselect("เลือกปัจจัยเสี่ยง", [c for c in df.columns if c != out_v], key="file_exp")
+
+                if st.button("🚀 ประมวลผลจากไฟล์"):
+                    results = []
+                    for exp_v in exp_list:
+                        temp = df[[out_v, exp_v]].copy().dropna()
+                        temp[out_v] = smart_map_variable(temp[out_v])
+                        temp[exp_v] = smart_map_variable(temp[exp_v])
+                        temp = temp[temp[out_v].isin([1, 0]) & temp[exp_v].isin([1, 0])]
+
+                        if len(temp) > 0:
+                            a = len(temp[(temp[exp_v]==1) & (temp[out_v]==1)])
+                            b = len(temp[(temp[exp_v]==1) & (temp[out_v]==0)])
+                            c = len(temp[(temp[exp_v]==0) & (temp[out_v]==1)])
+                            d = len(temp[(temp[exp_v]==0) & (temp[out_v]==0)])
+
+                            try:
+                                if "Case-control" in design:
+                                    m_label = "OR"
+                                    measure = (a * d) / (b * c) if (b * c) > 0 else 0
+                                    se_ln = math.sqrt(1/a + 1/b + 1/c + 1/d) if a*b*c*d > 0 else 0
+                                else:
+                                    m_label = "RR"
+                                    measure = (a / (a + b)) / (c / (c + d)) if (a+b) > 0 and (c+d) > 0 else 0
+                                    se_ln = math.sqrt((1/a - 1/(a+b)) + (1/c - 1/(c+d))) if a*c > 0 else 0
+
+                                ci_l = math.exp(math.log(measure) - 1.96 * se_ln) if measure > 0 else 0
+                                ci_u = math.exp(math.log(measure) + 1.96 * se_ln) if measure > 0 else 0
+
+                                mid_p_val = calculate_mid_p(a, b, c, d)
+
+                                results.append({
+                                    "ปัจจัย": exp_v, 
+                                    "ป่วย(+)": a, "ไม่ป่วย(+)": b, 
+                                    "ป่วย(-)": c, "ไม่ป่วย(-)": d, 
+                                    m_label: measure, 
+                                    "95% CI Lower": ci_l, 
+                                    "95% CI Upper": ci_u, 
+                                    "Mid-P (2-tail)": max(mid_p_val, 0)
+                                })
+                            except: pass
+
+                    if results:
+                        res_df = pd.DataFrame(results)
+                        st.success(f"✅ ประมวลผลสำเร็จ (ใช้สูตร Taylor Series และ Mid-P ตามมาตรฐาน OpenEpi)")
+                        st.dataframe(res_df.style.format({
+                            m_label: "{:.2f}", 
+                            "95% CI Lower": "{:.3f}", 
+                            "95% CI Upper": "{:.3f}", 
+                            "Mid-P (2-tail)": "{:.7f}"
+                        }))
+                        st.session_state['biv_file_res'] = res_df.to_string()
+                    else:
+                        st.warning("⚠️ ไม่พบข้อมูลที่เพียงพอในการวิเคราะห์")
+
+            if 'biv_file_res' in st.session_state:
+                if st.button("✨ ให้ AI ช่วยสรุปผล", key="ai_biv_file"):
+                    with st.spinner("AI กำลังวิเคราะห์และสรุปผล..."):
+                        summary = generate_ai_summary(api_key_input, st.session_state['biv_file_res'], "Bivariate Analysis (จากไฟล์)")
+                        st.markdown(f"<div class='ai-summary-box'><b>🤖 AI Summary:</b><br>{summary}</div>", unsafe_allow_html=True)
+
+        with tab2:
+            st.subheader("🔢 Manual 2x2 Table Calculator")
+            st.info("ใช้สำหรับคำนวณกรณีมีเพียงตัวเลขสรุป (Aggregated Data) โดยไม่ต้องอัปโหลดไฟล์")
+
+            manual_design = st.radio(
+                "รูปแบบการศึกษา (Study Design):",
+                ["Cohort Study (Relative Risk)", "Case-Control Study (Odds Ratio)"],
+                horizontal=True, key="man_design"
+            )
+
+            st.markdown("---")
+            c1, c2, c3 = st.columns([2, 1, 1])
+            with c1:
+                st.write("") 
+                st.write("")
+                st.markdown("**Exposed (สัมผัสปัจจัย)**")
+                st.write("")
+                st.markdown("**Non-Exposed (ไม่สัมผัส)**")
+            with c2:
+                st.markdown("<center><b>Sick (ป่วย)</b></center>", unsafe_allow_html=True)
+                ma = st.number_input("Cell a", min_value=0, value=0, step=1, label_visibility="collapsed")
+                mc = st.number_input("Cell c", min_value=0, value=0, step=1, label_visibility="collapsed")
+            with c3:
+                st.markdown("<center><b>Not Sick (ไม่ป่วย)</b></center>", unsafe_allow_html=True)
+                mb = st.number_input("Cell b", min_value=0, value=0, step=1, label_visibility="collapsed")
+                md = st.number_input("Cell d", min_value=0, value=0, step=1, label_visibility="collapsed")
+
+            if st.button("📈 คำนวณผล 2x2 Table"):
+                if (ma + mb + mc + md) > 0:
+                    try:
+                        if "Case-Control" in manual_design:
+                            res_label = "Odds Ratio (OR)"
+                            val = (ma * md) / (mb * mc) if (mb * mc) > 0 else 0
+                            se_ln = math.sqrt(1/ma + 1/mb + 1/mc + 1/md) if ma*mb*mc*md > 0 else 0
+                        else:
+                            res_label = "Relative Risk (RR)"
+                            val = (ma / (ma + mb)) / (mc / (mc + md)) if (ma + mb) > 0 and (mc + md) > 0 else 0
+                            se_ln = math.sqrt((1/ma - 1/(ma+mb)) + (1/mc - 1/(mc+md))) if ma*mc > 0 else 0
+
+                        lower = math.exp(math.log(val) - 1.96 * se_ln) if val > 0 else 0
+                        upper = math.exp(math.log(val) + 1.96 * se_ln) if val > 0 else 0
+
+                        obs = np.array([[ma, mb], [mc, md]])
+                        chi2_uncorrected, p_uncor, _, _ = chi2_contingency(obs, correction=False)
+                        chi2_yates, p_yates, _, _ = chi2_contingency(obs, correction=True)
+
+                        mid_p_val = calculate_mid_p(ma, mb, mc, md)
+
+                        st.markdown("---")
+                        col_res1, col_res2 = st.columns(2)
+                        with col_res1:
+                            st.metric(res_label, f"{val:.2f}")
+                            st.write(f"**95% CI (Taylor Series):**")
+                            st.write(f"👉 {lower:.3f} - {upper:.3f}")
+                            st.caption("ค่านี้จะตรงกับผลลัพธ์ใน OpenEpi/Epi Info")
+
+                        with col_res2:
+                            st.write("**Statistical Significance**")
+                            st.write(f"**Yates chi-square:** {chi2_yates:.3f}")
+                            st.write(f"**Mid-P exact (2-tail):** {max(mid_p_val, 0.0000001):.7f}")
+
+                            if mid_p_val < 0.05:
+                                st.success("✨ มีนัยสำคัญทางสถิติ (p < 0.05)")
+                            else:
+                                st.error("❌ ไม่มีนัยสำคัญทางสถิติ")
+
+                        manual_res = f"Study Design: {manual_design}\n{res_label}: {val:.2f} (95% CI: {lower:.3f} - {upper:.3f})\nYates chi-square: {chi2_yates:.3f}\nMid-P exact: {max(mid_p_val, 0.0000001):.7f}"
+                        st.session_state['biv_man_res'] = manual_res
+
+                    except Exception as e:
+                        st.error(f"⚠️ เกิดข้อผิดพลาดในการคำนวณ: {e}")
+                else:
+                    st.warning("กรุณากรอกตัวเลขจำนวนในตาราง 2x2")
+
+            if 'biv_man_res' in st.session_state:
+                if st.button("✨ ให้ AI ช่วยสรุปผล", key="ai_biv_man"):
+                    with st.spinner("AI กำลังวิเคราะห์และสรุปผล..."):
+                        summary = generate_ai_summary(api_key_input, st.session_state['biv_man_res'], "Bivariate Analysis (Manual)")
+                        st.markdown(f"<div class='ai-summary-box'><b>🤖 AI Summary:</b><br>{summary}</div>", unsafe_allow_html=True)
 
     # ------------------------------------------
     # 6.6 Logistic Regression
@@ -574,8 +705,8 @@ elif df is not None:
                     "P-value": "{:.4f}"
                 }).apply(lambda x: ['background-color: #F8BBD0' if x['P-value'] < 0.05 else '' for _ in x], axis=1), 
                 use_container_width=True)
-                st.success("✅ คำนวณค่า Adjusted OR และ 95% CI สำเร็จ")
                 
+                st.success("✅ คำนวณค่า Adjusted OR และ 95% CI สำเร็จ")
                 st.session_state['mlr_res'] = res_df.to_string()
 
             except Exception as e:
@@ -589,4 +720,4 @@ elif df is not None:
 
 # --- Footer ---
 st.markdown("---")
-st.markdown("<div style='text-align: center; color: #880E4F;'>Epi-Analytic Pro ODPC8 | พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: #880E4F;'>Epi-Analytic Pro ODPC8 | พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี กรมควบคุมโรค</div>", unsafe_allow_html=True)
