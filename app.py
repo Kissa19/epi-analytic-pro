@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components # นำเข้า components สำหรับทำแผนที่ Full Width
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
@@ -122,6 +123,7 @@ def generate_ai_summary(api_key, context_text, menu_name):
         return "⚠️ กรุณาระบุ Gemini API Key ในแถบเมนูด้านซ้ายเพื่อเปิดใช้งานผู้ช่วย AI"
     try:
         genai.configure(api_key=api_key)
+        # ค้นหาโมเดลที่ใช้งานได้อัตโนมัติ
         valid_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         if not valid_models: return "❌ API Key ของท่านไม่มีสิทธิ์ใช้งานโมเดลใดๆ"
         target_model = next((m for m in valid_models if '1.5-flash' in m), valid_models[0])
@@ -139,6 +141,7 @@ def generate_ai_summary(api_key, context_text, menu_name):
     except Exception as e:
         return f"❌ ไม่สามารถเชื่อมต่อ AI ได้: {e}"
 
+# ตั้งค่าสำหรับปุ่ม Export แผนภูมิความละเอียดสูง
 high_res_config = {
     'displaylogo': False,
     'toImageButtonOptions': {'format': 'png', 'filename': 'Epi_Chart_Export', 'height': 720, 'width': 1280, 'scale': 2}
@@ -443,7 +446,7 @@ elif df is not None:
             st.error("❌ ไม่สามารถวิเคราะห์ได้ เนื่องจากรูปแบบวันที่ในไฟล์ไม่ถูกต้อง")
 
     # ------------------------------------------
-    # 6.4 Spot Map
+    # 6.4 Spot Map (Responsive Full Width)
     # ------------------------------------------
     elif menu == "🗺️ Spot Map (Place)":
         st.title("🗺️ Spot Map - GIS Analytics")
@@ -456,15 +459,13 @@ elif df is not None:
             st.sidebar.markdown("---")
             st.sidebar.subheader("⚙️ ตั้งค่าแผนที่")
             
-            # ฟีเจอร์ใหม่: เลือกคอลัมน์ที่จะโชว์ในป้ายข้อมูลได้
             info_cols = st.sidebar.multiselect(
-                "เลือกข้อมูลที่จะโชว์บนป้าย:",
+                "เลือกข้อมูลที่จะโชว์บนป้าย Popup:",
                 df.columns.tolist(),
                 default=[df.columns[0]] if len(df.columns) > 0 else []
             )
             
-            # ฟีเจอร์ใหม่: เลือกโชว์ป้ายตลอดเวลา หรือโชว์ตอนคลิก
-            show_label_always = st.sidebar.checkbox("📌 โชว์ป้ายข้อมูลตลอดเวลา (Permanent Label)", value=True)
+            show_label_always = st.sidebar.checkbox("📌 โชว์ป้ายข้อมูลตลอดเวลา", value=True)
             
             buffer_radius = st.sidebar.number_input("รัศมีควบคุมโรค (เมตร)", min_value=0, value=100, step=50)
             map_type = st.sidebar.radio("รูปแบบแผนที่", ["ดาวเทียม (Google Hybrid)", "แผนที่ถนน (OpenStreetMap)"])
@@ -484,7 +485,6 @@ elif df is not None:
             )
 
             for idx, r in df_m.iterrows():
-                # สร้างข้อความสำหรับป้าย Popup (ไม่ให้มีขอบขาวตัดคำมั่ว)
                 popup_content = f"<div style='font-family: Sarabun; font-size: 14px; white-space: nowrap;'>"
                 for col in info_cols:
                     popup_content += f"<b>{col}:</b> {r[col]}<br>"
@@ -519,7 +519,9 @@ elif df is not None:
                     
                 marker.add_to(m)
 
-            folium_static(m, width=1000, height=650)
+            # ใช้ Streamlit Components เพื่อแสดงแผนที่แบบ Full Width (กว้างเต็มจอ 100%)
+            components.html(m._repr_html_(), height=650)
+            
             st.caption("💡 แนะนำให้ใช้ฟังก์ชัน Screen Capture (Print Screen) ของคอมพิวเตอร์ เพื่อบันทึกภาพแผนที่")
 
             if st.button("✨ ให้ AI ช่วยสรุปผล", key="ai_map"):
