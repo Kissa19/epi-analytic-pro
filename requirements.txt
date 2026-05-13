@@ -3,11 +3,9 @@ pandas
 numpy
 statsmodels
 scipy
-plotly
 st-gsheets-connection
+plotly
 folium
 streamlit-folium
 requests
-
-openpyxl
-
+google-generativeai
