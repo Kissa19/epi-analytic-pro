@@ -13,7 +13,7 @@ from streamlit_folium import folium_static
 import requests
 import math
 import re
-import google.generativeai as genai # นำเข้าไลบรารี AI
+import google.generativeai as genai
 
 # ==========================================
 # 1. CONFIGURATION & STYLING (MODERN SARABUN)
@@ -24,7 +24,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# บังคับฟอนต์ Sarabun และธีม Modern UI
 st.markdown(
     """
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -83,10 +82,6 @@ st.markdown(
             margin-bottom: 12px;
             transition: transform 0.2s ease;
         }
-        .template-box:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(0,0,0,0.06);
-        }
         .template-link {
             color: #D81B60 !important;
             text-decoration: none;
@@ -127,7 +122,7 @@ def generate_ai_summary(api_key, context_text, menu_name):
         return "⚠️ กรุณาระบุ Gemini API Key ในแถบเมนูด้านซ้ายเพื่อเปิดใช้งานผู้ช่วย AI"
     try:
         genai.configure(api_key=api_key)
-        # ค้นหาโมเดลที่ใช้งานได้อัตโนมัติ เพื่อป้องกัน Error 404
+        # ค้นหาโมเดลที่ใช้งานได้อัตโนมัติ
         valid_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         if not valid_models: return "❌ API Key ของท่านไม่มีสิทธิ์ใช้งานโมเดลใดๆ"
         target_model = next((m for m in valid_models if '1.5-flash' in m), valid_models[0])
@@ -145,7 +140,7 @@ def generate_ai_summary(api_key, context_text, menu_name):
     except Exception as e:
         return f"❌ ไม่สามารถเชื่อมต่อ AI ได้: {e}"
 
-# ตั้งค่าสำหรับปุ่ม Export รูปภาพแผนภูมิความละเอียดสูง
+# ตั้งค่าสำหรับปุ่ม Export แผนภูมิความละเอียดสูง
 high_res_config = {
     'displaylogo': False,
     'toImageButtonOptions': {'format': 'png', 'filename': 'Epi_Chart_Export', 'height': 720, 'width': 1280, 'scale': 2}
@@ -245,7 +240,7 @@ if st.session_state['registered']:
                     st.cache_data.clear(); st.rerun()
             except Exception as e:
                 st.error(f"เชื่อมต่อล้มเหลว: {e}")
-                st.info("💡 คำแนะนำ: โปรดตรวจสอบว่าเปิดสิทธิ์การแชร์เป็น 'ทุกคนที่มีลิงก์' แล้วหรือไม่")
+                st.info("💡 คำแนะนำ: โปรดตรวจสอบว่าลิงก์ Google Sheets เปิดสิทธิ์การแชร์เป็น 'ทุกคนที่มีลิงก์' แล้วหรือไม่")
 
     st.sidebar.markdown("---")
     st.sidebar.subheader("📖 คู่มือการใช้งาน (Manual)")
@@ -384,14 +379,14 @@ elif df is not None:
                 st.markdown(f"<div class='ai-summary-box'><b>🤖 AI Summary:</b><br>{summary}</div>", unsafe_allow_html=True)
 
     # ------------------------------------------
-    # 6.3 Epidemic Curve (Advanced Range)
+    # 6.3 Epidemic Curve 
     # ------------------------------------------
     elif menu == "📊 สร้าง Epi Curve (Time)":
         st.title("📊 Interactive Epidemic Curve")
         date_col = st.sidebar.selectbox("คอลัมน์วันเริ่มป่วย", df.columns)
         col_grp = st.sidebar.selectbox("ตัวแปรแยกกลุ่มสี:", ["<none>"] + list(df.columns))
         
-        # ฟีเจอร์เลือกสีแผนภูมิแท่งเองได้
+        # เลือกสีแผนภูมิแท่งเองได้
         custom_color = st.sidebar.color_picker("🎨 เลือกสีแผนภูมิแท่งหลัก", "#E91E63")
 
         unit_map = {"Hour": "h", "Day": "d", "Week": "W", "Month": "ME", "30 Min": "30min"}
@@ -463,6 +458,14 @@ elif df is not None:
 
             st.sidebar.markdown("---")
             st.sidebar.subheader("⚙️ ตั้งค่าแผนที่")
+            
+            # ฟีเจอร์เลือกข้อมูลโชว์ในป้าย Popup
+            info_cols = st.sidebar.multiselect(
+                "เลือกข้อมูลที่จะโชว์บนป้าย Popup:",
+                df.columns.tolist(),
+                default=[df.columns[0]] if len(df.columns) > 0 else []
+            )
+            
             buffer_radius = st.sidebar.number_input("รัศมีควบคุมโรค (เมตร)", min_value=0, value=100, step=50)
             map_type = st.sidebar.radio("รูปแบบแผนที่", ["ดาวเทียม (Google Hybrid)", "แผนที่ถนน (OpenStreetMap)"])
 
@@ -481,6 +484,14 @@ elif df is not None:
             )
 
             for idx, r in df_m.iterrows():
+                # สร้างข้อความป้ายข้อมูลแบบ Dynamic
+                popup_content = f"<div style='font-family: Sarabun; font-size: 14px;'>"
+                for col in info_cols:
+                    popup_content += f"<b>{col}:</b> {r[col]}<br>"
+                popup_content += "</div>"
+                
+                if not info_cols: popup_content = f"เคสที่ {idx+1}"
+
                 if buffer_radius > 0:
                     folium.Circle(
                         location=[r[lat_c], r[lon_c]], 
@@ -498,7 +509,7 @@ elif df is not None:
                     color='#E91E63',
                     fill=True, 
                     fill_opacity=1.0,
-                    popup=f"เคสที่ {idx+1}"
+                    popup=folium.Popup(popup_content, max_width=300)
                 ).add_to(m)
 
             folium_static(m, width=1000, height=650)
@@ -598,16 +609,19 @@ elif df is not None:
 
             st.markdown("---")
             c1, c2, c3 = st.columns([2, 1, 1])
+
             with c1:
                 st.write("") 
                 st.write("")
                 st.markdown("**Exposed (สัมผัสปัจจัย)**")
                 st.write("")
                 st.markdown("**Non-Exposed (ไม่สัมผัส)**")
+
             with c2:
                 st.markdown("<center><b>Sick (ป่วย)</b></center>", unsafe_allow_html=True)
                 ma = st.number_input("Cell a", min_value=0, value=0, step=1, label_visibility="collapsed")
                 mc = st.number_input("Cell c", min_value=0, value=0, step=1, label_visibility="collapsed")
+
             with c3:
                 st.markdown("<center><b>Not Sick (ไม่ป่วย)</b></center>", unsafe_allow_html=True)
                 mb = st.number_input("Cell b", min_value=0, value=0, step=1, label_visibility="collapsed")
@@ -636,6 +650,7 @@ elif df is not None:
 
                         st.markdown("---")
                         col_res1, col_res2 = st.columns(2)
+
                         with col_res1:
                             st.metric(res_label, f"{val:.2f}")
                             st.write(f"**95% CI (Taylor Series):**")
