@@ -247,7 +247,7 @@ if st.session_state['registered']:
     st.sidebar.subheader("📖 คู่มือการใช้งาน (Manual)")
     st.sidebar.markdown(f"""
     <div class="template-box" style="background-color: #FFF0F5; border-color: #E91E63;">
-        <a class="template-link" href="https://drive.google.com/file/d/12AWteziDcdW50v3CXo7dWnjihnM2dtif/view?usp=drive_link" target="_blank" style="font-size: 1.15rem; color: #D81B60 !important; font-weight: 600; text-align: center; margin-bottom: 0;">
+        <a class="template-link" href="https://drive.google.com/file/d/1ST832VjiNaegB8kqJz_4Zhx2jBeF0k_i/view?usp=drive_link" target="_blank" style="font-size: 1.15rem; color: #D81B60 !important; font-weight: 600; text-align: center; margin-bottom: 0;">
             🖥️ เปิดสไลด์คู่มือการใช้งานระบบ
         </a>
     </div>
