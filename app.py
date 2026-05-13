@@ -122,7 +122,6 @@ def generate_ai_summary(api_key, context_text, menu_name):
         return "⚠️ กรุณาระบุ Gemini API Key ในแถบเมนูด้านซ้ายเพื่อเปิดใช้งานผู้ช่วย AI"
     try:
         genai.configure(api_key=api_key)
-        # ค้นหาโมเดลที่ใช้งานได้อัตโนมัติ
         valid_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         if not valid_models: return "❌ API Key ของท่านไม่มีสิทธิ์ใช้งานโมเดลใดๆ"
         target_model = next((m for m in valid_models if '1.5-flash' in m), valid_models[0])
@@ -140,7 +139,6 @@ def generate_ai_summary(api_key, context_text, menu_name):
     except Exception as e:
         return f"❌ ไม่สามารถเชื่อมต่อ AI ได้: {e}"
 
-# ตั้งค่าสำหรับปุ่ม Export แผนภูมิความละเอียดสูง
 high_res_config = {
     'displaylogo': False,
     'toImageButtonOptions': {'format': 'png', 'filename': 'Epi_Chart_Export', 'height': 720, 'width': 1280, 'scale': 2}
@@ -240,7 +238,7 @@ if st.session_state['registered']:
                     st.cache_data.clear(); st.rerun()
             except Exception as e:
                 st.error(f"เชื่อมต่อล้มเหลว: {e}")
-                st.info("💡 คำแนะนำ: โปรดตรวจสอบว่าลิงก์ Google Sheets เปิดสิทธิ์การแชร์เป็น 'ทุกคนที่มีลิงก์' แล้วหรือไม่")
+                st.info("💡 คำแนะนำ: โปรดตรวจสอบว่าเปิดสิทธิ์การแชร์เป็น 'ทุกคนที่มีลิงก์' แล้วหรือไม่")
 
     st.sidebar.markdown("---")
     st.sidebar.subheader("📖 คู่มือการใช้งาน (Manual)")
@@ -386,7 +384,6 @@ elif df is not None:
         date_col = st.sidebar.selectbox("คอลัมน์วันเริ่มป่วย", df.columns)
         col_grp = st.sidebar.selectbox("ตัวแปรแยกกลุ่มสี:", ["<none>"] + list(df.columns))
         
-        # เลือกสีแผนภูมิแท่งเองได้
         custom_color = st.sidebar.color_picker("🎨 เลือกสีแผนภูมิแท่งหลัก", "#E91E63")
 
         unit_map = {"Hour": "h", "Day": "d", "Week": "W", "Month": "ME", "30 Min": "30min"}
@@ -459,12 +456,15 @@ elif df is not None:
             st.sidebar.markdown("---")
             st.sidebar.subheader("⚙️ ตั้งค่าแผนที่")
             
-            # ฟีเจอร์เลือกข้อมูลโชว์ในป้าย Popup
+            # ฟีเจอร์ใหม่: เลือกคอลัมน์ที่จะโชว์ในป้ายข้อมูลได้
             info_cols = st.sidebar.multiselect(
-                "เลือกข้อมูลที่จะโชว์บนป้าย Popup:",
+                "เลือกข้อมูลที่จะโชว์บนป้าย:",
                 df.columns.tolist(),
                 default=[df.columns[0]] if len(df.columns) > 0 else []
             )
+            
+            # ฟีเจอร์ใหม่: เลือกโชว์ป้ายตลอดเวลา หรือโชว์ตอนคลิก
+            show_label_always = st.sidebar.checkbox("📌 โชว์ป้ายข้อมูลตลอดเวลา (Permanent Label)", value=True)
             
             buffer_radius = st.sidebar.number_input("รัศมีควบคุมโรค (เมตร)", min_value=0, value=100, step=50)
             map_type = st.sidebar.radio("รูปแบบแผนที่", ["ดาวเทียม (Google Hybrid)", "แผนที่ถนน (OpenStreetMap)"])
@@ -484,13 +484,14 @@ elif df is not None:
             )
 
             for idx, r in df_m.iterrows():
-                # สร้างข้อความป้ายข้อมูลแบบ Dynamic
-                popup_content = f"<div style='font-family: Sarabun; font-size: 14px;'>"
+                # สร้างข้อความสำหรับป้าย Popup (ไม่ให้มีขอบขาวตัดคำมั่ว)
+                popup_content = f"<div style='font-family: Sarabun; font-size: 14px; white-space: nowrap;'>"
                 for col in info_cols:
                     popup_content += f"<b>{col}:</b> {r[col]}<br>"
                 popup_content += "</div>"
                 
-                if not info_cols: popup_content = f"เคสที่ {idx+1}"
+                if not info_cols: 
+                    popup_content = f"<div style='font-family: Sarabun; font-size: 14px; white-space: nowrap;'>เคสที่ {idx+1}</div>"
 
                 if buffer_radius > 0:
                     folium.Circle(
@@ -503,17 +504,23 @@ elif df is not None:
                         fill_color='#FF9800'
                     ).add_to(m)
 
-                folium.CircleMarker(
+                marker = folium.CircleMarker(
                     location=[r[lat_c], r[lon_c]], 
                     radius=6, 
                     color='#E91E63',
                     fill=True, 
-                    fill_opacity=1.0,
-                    popup=folium.Popup(popup_content, max_width=300)
-                ).add_to(m)
+                    fill_opacity=1.0
+                )
+                
+                if show_label_always:
+                    marker.add_child(folium.Tooltip(popup_content, permanent=True, direction='right', opacity=0.85))
+                else:
+                    marker.add_child(folium.Popup(popup_content, max_width=300))
+                    
+                marker.add_to(m)
 
             folium_static(m, width=1000, height=650)
-            st.caption("💡 แนะนำให้ใช้ฟังก์ชัน Screen Capture ของคอมพิวเตอร์ เพื่อบันทึกภาพแผนที่")
+            st.caption("💡 แนะนำให้ใช้ฟังก์ชัน Screen Capture (Print Screen) ของคอมพิวเตอร์ เพื่อบันทึกภาพแผนที่")
 
             if st.button("✨ ให้ AI ช่วยสรุปผล", key="ai_map"):
                 with st.spinner("AI กำลังวิเคราะห์และสรุปผล..."):
