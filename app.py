@@ -108,7 +108,21 @@ def generate_ai_summary(api_key, context_text, menu_name):
         return "⚠️ กรุณาระบุ Gemini API Key ในแถบเมนูด้านซ้ายเพื่อเปิดใช้งานผู้ช่วย AI"
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        
+        # 💡 ค้นหาชื่อโมเดลที่ API Key นี้สามารถใช้งานได้อัตโนมัติ
+        valid_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                valid_models.append(m.name)
+                
+        if not valid_models:
+            return "❌ API Key ของท่านไม่ได้รับสิทธิ์ให้ใช้งานโมเดลใดๆ เลย กรุณาตรวจสอบที่ Google AI Studio"
+            
+        # เลือกใช้ gemini-1.5-flash ก่อนถ้ามีในระบบ ถ้าไม่มีให้ใช้ตัวแรกที่ระบบอนุญาต
+        target_model = next((m for m in valid_models if '1.5-flash' in m), valid_models[0])
+        
+        model = genai.GenerativeModel(target_model)
+        
         prompt = f"""
         คุณคือนักระบาดวิทยาผู้เชี่ยวชาญ กรุณาสรุปผลการวิเคราะห์ข้อมูลต่อไปนี้จากเมนู '{menu_name}' 
         เพื่อนำไปเขียนในรายงานการสอบสวนการระบาดของโรค (ขอแบบสั้น กระชับ เป็นทางการ ตรงประเด็น)
