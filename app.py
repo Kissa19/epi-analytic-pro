@@ -108,7 +108,7 @@ def generate_ai_summary(api_key, context_text, menu_name):
         return "⚠️ กรุณาระบุ Gemini API Key ในแถบเมนูด้านซ้ายเพื่อเปิดใช้งานผู้ช่วย AI"
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-pro')
         prompt = f"""
         คุณคือนักระบาดวิทยาผู้เชี่ยวชาญ กรุณาสรุปผลการวิเคราะห์ข้อมูลต่อไปนี้จากเมนู '{menu_name}' 
         เพื่อนำไปเขียนในรายงานการสอบสวนการระบาดของโรค (ขอแบบสั้น กระชับ เป็นทางการ ตรงประเด็น)
@@ -575,4 +575,4 @@ elif df is not None:
 
 # --- Footer ---
 st.markdown("---")
-st.markdown("<div style='text-align: center; color: #880E4F;'>Epi-Analytic Pro ODPC8 | พัฒนาโดย กลุ่มระบาดวิทยา</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: #880E4F;'>Epi-Analytic Pro ODPC8 | พัฒนาโดย กลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข สคร.8 อุดรธานี</div>", unsafe_allow_html=True)
