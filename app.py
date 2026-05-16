@@ -344,7 +344,7 @@ elif df is not None:
         st.info(f"📋 จำนวนผู้ป่วยทั้งหมด (n) = {total_n} ราย")
         
         c1, c2 = st.columns(2)
-        res_sex_str, res_age_str, s_df_str = "", "", ""
+        res_sex_str, res_age_str, s_df_str, numeric_stats_str = "", "", "", ""
         with c1:
             sex_col = st.selectbox("ตัวแปรเพศ", df.columns)
             res_sex = df[sex_col].value_counts().reset_index()
@@ -359,6 +359,33 @@ elif df is not None:
             st.table(res_age.style.format({'%': '{:.2f}'}))
             res_age_str = res_age.to_string()
 
+        # --- ฟีเจอร์ใหม่: คำนวณค่าสถิติข้อมูลเชิงปริมาณ (Mean, Median, SD, Min, Max) ---
+        st.markdown("---")
+        st.subheader("📊 ค่าสถิติข้อมูลเชิงปริมาณ (Continuous Data)")
+        
+        default_idx = list(df.columns).index(age_col) if age_col in df.columns else 0
+        num_col = st.selectbox("เลือกตัวแปรเพื่อคำนวณค่าสถิติ (เช่น อายุ, ระยะฟักตัว):", df.columns, index=default_idx)
+        
+        numeric_series = pd.to_numeric(df[num_col], errors='coerce').dropna()
+        
+        if not numeric_series.empty:
+            mean_val = numeric_series.mean()
+            median_val = numeric_series.median()
+            sd_val = numeric_series.std()
+            min_val = numeric_series.min()
+            max_val = numeric_series.max()
+            
+            c_stat1, c_stat2, c_stat3, c_stat4 = st.columns(4)
+            c_stat1.metric("ค่าเฉลี่ย (Mean)", f"{mean_val:.2f}")
+            c_stat2.metric("มัธยฐาน (Median)", f"{median_val:.2f}")
+            c_stat3.metric("ส่วนเบี่ยงเบนมาตรฐาน (SD)", f"{sd_val:.2f}")
+            c_stat4.metric("พิสัย (Min - Max)", f"{min_val:.2f} - {max_val:.2f}")
+            
+            numeric_stats_str = f"\nสถิติเชิงปริมาณ ({num_col}): ค่าเฉลี่ย={mean_val:.2f}, มัธยฐาน={median_val:.2f}, SD={sd_val:.2f}, พิสัย(ต่ำสุด-สูงสุด)={min_val:.2f}-{max_val:.2f}"
+        else:
+            st.warning("⚠️ ข้อมูลที่เลือกไม่สามารถคำนวณค่าทางสถิติได้ (กรุณาเลือกคอลัมน์ที่เป็นตัวเลข)")
+
+        st.markdown("---")
         st.subheader("อาการแสดง (1=มีอาการ)")
         symp_cols = st.multiselect("เลือกตัวแปรอาการ", df.columns)
         if symp_cols:
@@ -373,7 +400,7 @@ elif df is not None:
 
         if st.button("✨ ให้ AI ช่วยสรุปผล", key="ai_desc"):
             with st.spinner("AI กำลังวิเคราะห์และสรุปผล..."):
-                context = f"จำนวนเคส: {total_n}\nเพศ:\n{res_sex_str}\nอายุ:\n{res_age_str}\nอาการ:\n{s_df_str}"
+                context = f"จำนวนเคส: {total_n}\nเพศ:\n{res_sex_str}\nอายุ:\n{res_age_str}{numeric_stats_str}\nอาการ:\n{s_df_str}"
                 summary = generate_ai_summary(api_key_input, context, "ระบาดวิทยาเชิงพรรณนา")
                 st.markdown(f"<div class='ai-summary-box'><b>🤖 AI Summary:</b><br>{summary}</div>", unsafe_allow_html=True)
 
@@ -383,7 +410,6 @@ elif df is not None:
     elif menu == "📊 สร้าง Epi Curve (Time)":
         st.title("📊 Interactive Epidemic Curve")
         
-        # กล่องแสดงลิงก์คู่มือระบาดวิทยาสำหรับการแบ่ง Bin ตามที่ระบุ
         st.markdown(
             """
             <div class="template-box" style="background: linear-gradient(135deg, #FFF0F5 0%, #ffffff 100%); border-left: 5px solid #E91E63; padding: 15px; margin-bottom: 25px;">
