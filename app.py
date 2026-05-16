@@ -1,5 +1,5 @@
 import streamlit as st
-import streamlit.components.v1 as components # นำเข้า components สำหรับทำแผนที่ Full Width
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
@@ -123,7 +123,6 @@ def generate_ai_summary(api_key, context_text, menu_name):
         return "⚠️ กรุณาระบุ Gemini API Key ในแถบเมนูด้านซ้ายเพื่อเปิดใช้งานผู้ช่วย AI"
     try:
         genai.configure(api_key=api_key)
-        # ค้นหาโมเดลที่ใช้งานได้อัตโนมัติ
         valid_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         if not valid_models: return "❌ API Key ของท่านไม่มีสิทธิ์ใช้งานโมเดลใดๆ"
         target_model = next((m for m in valid_models if '1.5-flash' in m), valid_models[0])
@@ -141,7 +140,6 @@ def generate_ai_summary(api_key, context_text, menu_name):
     except Exception as e:
         return f"❌ ไม่สามารถเชื่อมต่อ AI ได้: {e}"
 
-# ตั้งค่าสำหรับปุ่ม Export แผนภูมิความละเอียดสูง
 high_res_config = {
     'displaylogo': False,
     'toImageButtonOptions': {'format': 'png', 'filename': 'Epi_Chart_Export', 'height': 720, 'width': 1280, 'scale': 2}
@@ -247,7 +245,7 @@ if st.session_state['registered']:
     st.sidebar.subheader("📖 คู่มือการใช้งาน (Manual)")
     st.sidebar.markdown(f"""
     <div class="template-box" style="background-color: #FFF0F5; border-color: #E91E63;">
-        <a class="template-link" href="https://drive.google.com/file/d/1ST832VjiNaegB8kqJz_4Zhx2jBeF0k_i/view?usp=drive_link" target="_blank" style="font-size: 1.15rem; color: #D81B60 !important; font-weight: 600; text-align: center; margin-bottom: 0;">
+        <a class="template-link" href="https://drive.google.com/file/d/12AWteziDcdW50v3CXo7dWnjihnM2dtif/view?usp=drive_link" target="_blank" style="font-size: 1.15rem; color: #D81B60 !important; font-weight: 600; text-align: center; margin-bottom: 0;">
             🖥️ เปิดสไลด์คู่มือการใช้งานระบบ
         </a>
     </div>
@@ -384,6 +382,21 @@ elif df is not None:
     # ------------------------------------------
     elif menu == "📊 สร้าง Epi Curve (Time)":
         st.title("📊 Interactive Epidemic Curve")
+        
+        # กล่องแสดงลิงก์คู่มือระบาดวิทยาสำหรับการแบ่ง Bin ตามที่ระบุ
+        st.markdown(
+            """
+            <div class="template-box" style="background: linear-gradient(135deg, #FFF0F5 0%, #ffffff 100%); border-left: 5px solid #E91E63; padding: 15px; margin-bottom: 25px;">
+                <span style="font-weight: 600; color: #880E4F;">💡 แนวทางการแบ่งช่วงเวลา (Bin):</span> 
+                ท่านสามารถคลิกดูแนวทางการตั้งค่าและแบ่ง Bin ให้สอดคล้องกับชนิดของโรค/เชื้อโรค โดยใช้ปัญญาประดิษฐ์วิเคราะห์ได้ที่ 
+                <a href="https://script.google.com/macros/s/AKfycbycVxWwodTKeNV-xayinlxkx1SmYkhjeFsjPHBSinshVTKtbsZCMuYpTKI9oFmqUnn_/exec" target="_blank" style="color: #D81B60; font-weight: 600; text-decoration: underline;">
+                    ระบบรายงานและวิเคราะห์ข้อมูลระบาดวิทยา (Epidemiology Dashboard)
+                </a>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
         date_col = st.sidebar.selectbox("คอลัมน์วันเริ่มป่วย", df.columns)
         col_grp = st.sidebar.selectbox("ตัวแปรแยกกลุ่มสี:", ["<none>"] + list(df.columns))
         
@@ -446,7 +459,7 @@ elif df is not None:
             st.error("❌ ไม่สามารถวิเคราะห์ได้ เนื่องจากรูปแบบวันที่ในไฟล์ไม่ถูกต้อง")
 
     # ------------------------------------------
-    # 6.4 Spot Map (Responsive Full Width)
+    # 6.4 Spot Map
     # ------------------------------------------
     elif menu == "🗺️ Spot Map (Place)":
         st.title("🗺️ Spot Map - GIS Analytics")
@@ -519,9 +532,7 @@ elif df is not None:
                     
                 marker.add_to(m)
 
-            # ใช้ Streamlit Components เพื่อแสดงแผนที่แบบ Full Width (กว้างเต็มจอ 100%)
             components.html(m._repr_html_(), height=650)
-            
             st.caption("💡 แนะนำให้ใช้ฟังก์ชัน Screen Capture (Print Screen) ของคอมพิวเตอร์ เพื่อบันทึกภาพแผนที่")
 
             if st.button("✨ ให้ AI ช่วยสรุปผล", key="ai_map"):
