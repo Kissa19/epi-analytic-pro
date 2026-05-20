@@ -148,6 +148,7 @@ high_res_config = {
 # ==========================================
 # 3. HELPER FUNCTIONS
 # ==========================================
+@st.cache_data
 def load_data(file):
     try:
         if file.name.endswith('.csv'):
