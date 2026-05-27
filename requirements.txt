@@ -1,12 +1,12 @@
 streamlit
 pandas
 numpy
+openpyxl
 statsmodels
 scipy
-st-gsheets-connection
+streamlit-gsheets
 plotly
 folium
 streamlit-folium
 requests
 google-generativeai
-openpyxl
