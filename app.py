@@ -27,86 +27,199 @@ st.set_page_config(
 
 st.markdown(
     """
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        html, body, [class*="css"], [class*="st-"], div, span, applet, object, iframe,
-        h1, h2, h3, h4, h5, h6, p, blockquote, pre, a, abbr, acronym, address, big, cite, code,
-        del, dfn, em, img, ins, kbd, q, s, samp, small, strike, strong, sub, sup, tt, var,
-        b, u, i, center, dl, dt, dd, ol, ul, li, fieldset, form, label, legend,
-        table, caption, tbody, tfoot, thead, tr, th, td, article, aside, canvas, details, embed, 
-        figure, figcaption, footer, header, hgroup, menu, nav, output, ruby, section, summary,
-        time, mark, audio, video, button, input, select, textarea {
-            font-family: 'Sarabun', sans-serif !important;
+        :root {
+            --bg: #F6F8FF;
+            --surface: rgba(255,255,255,0.88);
+            --surface-solid: #FFFFFF;
+            --ink: #172033;
+            --muted: #64748B;
+            --primary: #6556FF;
+            --primary-2: #00B4D8;
+            --accent: #EC4899;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --border: rgba(100,116,139,0.16);
+            --shadow: 0 18px 45px rgba(15, 23, 42, 0.10);
+            --shadow-soft: 0 10px 30px rgba(15, 23, 42, 0.07);
+            --radius: 22px;
         }
 
-        p, span, label, div, th, td { font-size: 1.15rem !important; }
-        h1 { font-size: 2.6rem !important; color: #D81B60 !important; font-weight: 700 !important; padding-bottom: 0.5rem; letter-spacing: -0.5px;}
-        h2 { font-size: 2.0rem !important; color: #D81B60 !important; font-weight: 600 !important; }
-        h3 { font-size: 1.6rem !important; color: #880E4F !important; font-weight: 600 !important; }
+        html, body, [class*="css"], [class*="st-"], div, span, label, p, a, button, input, select, textarea,
+        h1, h2, h3, h4, h5, h6, th, td {
+            font-family: 'Noto Sans Thai', 'Sarabun', sans-serif !important;
+            letter-spacing: -0.01em;
+        }
 
-        [data-testid="stMetricValue"] { font-size: 2.6rem !important; color: #E91E63 !important; font-weight: 700 !important; }
-        [data-testid="stMetricLabel"] { font-size: 1.2rem !important; font-weight: 500 !important; color: #666 !important; }
+        .stApp {
+            background:
+                radial-gradient(circle at top left, rgba(101, 86, 255, 0.20), transparent 32rem),
+                radial-gradient(circle at top right, rgba(0, 180, 216, 0.18), transparent 30rem),
+                linear-gradient(180deg, #F8FAFF 0%, #F5F7FB 45%, #FFFFFF 100%);
+            color: var(--ink);
+        }
+
+        .block-container {
+            padding-top: 1.4rem !important;
+            padding-bottom: 3rem !important;
+            max-width: 1480px !important;
+        }
+
+        h1, h2, h3 { color: var(--ink) !important; }
+        h1 { font-size: clamp(2.0rem, 4vw, 3.35rem) !important; font-weight: 800 !important; letter-spacing: -0.05em; }
+        h2 { font-size: 2.0rem !important; font-weight: 750 !important; }
+        h3 { font-size: 1.35rem !important; font-weight: 700 !important; }
+        p, span, label, div, th, td { font-size: 1.02rem !important; }
 
         [data-testid="stSidebar"] {
-            background-color: #FFFFFF !important; 
-            box-shadow: 2px 0 15px rgba(0,0,0,0.04);
-            border: none !important;
+            background: rgba(255,255,255,0.86) !important;
+            backdrop-filter: blur(20px);
+            border-right: 1px solid var(--border);
+            box-shadow: 12px 0 40px rgba(15, 23, 42, 0.06);
         }
-        [data-testid="stSidebar"] p, [data-testid="stSidebar"] label {
-            color: #4A4A4A !important;
-            font-size: 1.1rem !important;
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+        [data-testid="stSidebar"] label { color: var(--muted) !important; }
+
+        .app-brand {
+            padding: 18px 16px;
+            border-radius: var(--radius);
+            background: linear-gradient(135deg, rgba(101,86,255,0.12), rgba(0,180,216,0.12));
+            border: 1px solid rgba(101,86,255,0.18);
+            box-shadow: var(--shadow-soft);
+            margin-bottom: 14px;
         }
-        
-        .stButton > button {
-            background: linear-gradient(135deg, #E91E63 0%, #C2185B 100%) !important;
+        .app-brand-title { font-size: 1.25rem !important; font-weight: 800; color: var(--ink); margin-bottom: 2px; }
+        .app-brand-subtitle { font-size: 0.92rem !important; color: var(--muted); }
+
+        .hero {
+            position: relative;
+            overflow: hidden;
+            padding: 28px 30px;
+            border-radius: 30px;
+            background:
+                linear-gradient(135deg, rgba(18,24,38,0.96), rgba(58,45,160,0.92)),
+                radial-gradient(circle at 80% 20%, rgba(0,180,216,0.36), transparent 26rem);
+            border: 1px solid rgba(255,255,255,0.16);
+            box-shadow: var(--shadow);
+            margin: 0 0 1.2rem 0;
+        }
+        .hero:after {
+            content: "";
+            position: absolute;
+            right: -70px; top: -80px;
+            width: 260px; height: 260px;
+            border-radius: 999px;
+            background: radial-gradient(circle, rgba(236,72,153,0.45), transparent 65%);
+        }
+        .hero-kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #C7D2FE;
+            font-weight: 700;
+            font-size: 0.86rem !important;
+            margin-bottom: 12px;
+        }
+        .hero-title { color: #FFFFFF !important; font-size: clamp(2rem, 5vw, 3.5rem) !important; line-height: 1.05; font-weight: 800; margin: 0 0 10px 0; letter-spacing: -0.05em; }
+        .hero-subtitle { color: rgba(255,255,255,0.78); max-width: 880px; font-size: 1.05rem !important; margin-bottom: 0; }
+
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 1.4rem 0 0.8rem 0;
+        }
+        .section-icon {
+            display: grid;
+            place-items: center;
+            width: 46px; height: 46px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-2));
+            color: #fff;
+            box-shadow: 0 10px 22px rgba(101,86,255,0.25);
+            font-size: 1.25rem !important;
+        }
+        .section-heading { font-size: 1.75rem !important; font-weight: 800; color: var(--ink); }
+        .section-caption { color: var(--muted); font-size: 0.96rem !important; margin-top: -6px; }
+
+        .metric-card, .glass-card, .template-box, .ai-summary-box {
+            background: var(--surface) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: var(--radius) !important;
+            box-shadow: var(--shadow-soft) !important;
+        }
+        .metric-card {
+            padding: 16px 18px;
+            min-height: 112px;
+        }
+        .metric-label { color: var(--muted); font-size: 0.88rem !important; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+        .metric-value { color: var(--ink); font-size: 2.0rem !important; font-weight: 800; line-height: 1.1; margin-top: 8px; }
+        .metric-note { color: var(--muted); font-size: 0.88rem !important; margin-top: 4px; }
+
+        div[data-testid="stMetric"] {
+            background: var(--surface) !important;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px 18px;
+            box-shadow: var(--shadow-soft);
+        }
+        [data-testid="stMetricValue"] { color: var(--primary) !important; font-weight: 800 !important; }
+        [data-testid="stMetricLabel"] { color: var(--muted) !important; font-weight: 700 !important; }
+
+        .stButton > button, .stDownloadButton > button, button[kind="primary"] {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%) !important;
             color: #FFFFFF !important;
-            border-radius: 12px !important;
-            border: none !important;
-            width: 100%;
-            padding: 10px 0 !important;
-            font-size: 1.2rem !important;
-            font-weight: 600 !important;
-            box-shadow: 0 4px 10px rgba(233, 30, 99, 0.25);
-            transition: all 0.3s ease;
+            border: 0 !important;
+            border-radius: 16px !important;
+            padding: 0.72rem 1rem !important;
+            font-weight: 800 !important;
+            box-shadow: 0 14px 24px rgba(101,86,255,0.22);
+            transition: transform 160ms ease, box-shadow 160ms ease;
         }
-        .stButton > button:hover {
+        .stButton > button:hover, .stDownloadButton > button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 15px rgba(233, 30, 99, 0.4);
+            box-shadow: 0 16px 30px rgba(101,86,255,0.30);
         }
 
-        .template-box {
-            background-color: #ffffff;
-            padding: 18px;
-            border-radius: 16px;
-            border: 1px solid #f0f0f0;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-            margin-bottom: 12px;
-            transition: transform 0.2s ease;
+        [data-baseweb="select"] > div,
+        [data-testid="stTextInput"] input,
+        [data-testid="stNumberInput"] input,
+        [data-testid="stFileUploader"] section,
+        textarea {
+            border-radius: 16px !important;
+            border-color: rgba(100,116,139,0.25) !important;
+            background-color: rgba(255,255,255,0.92) !important;
         }
+        div[data-testid="stDataFrame"], .stTable, [data-testid="stTable"] {
+            border-radius: var(--radius) !important;
+            overflow: hidden !important;
+            box-shadow: var(--shadow-soft);
+        }
+        .template-box { padding: 18px; margin-bottom: 12px; }
         .template-link {
-            color: #D81B60 !important;
+            color: var(--primary) !important;
             text-decoration: none;
-            font-size: 1.1rem;
-            font-weight: 500;
+            font-weight: 700;
             display: block;
-            margin-bottom: 6px;
-            padding: 8px 12px;
-            border-radius: 8px;
-            transition: background 0.2s;
+            padding: 9px 12px;
+            border-radius: 12px;
         }
-        .template-link:hover {
-            background-color: #FFF0F5;
-            text-decoration: none;
-        }
-        
+        .template-link:hover { background: rgba(101,86,255,0.08); }
         .ai-summary-box {
-            background-color: #FDFEFE;
-            border-left: 5px solid #2ECC71;
-            padding: 15px;
-            border-radius: 8px;
+            border-left: 6px solid var(--success) !important;
+            padding: 18px 20px;
             margin-top: 15px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            line-height: 1.75;
         }
+        .small-muted { color: var(--muted); font-size: 0.92rem !important; }
+        hr { border-color: rgba(100,116,139,0.16) !important; }
     </style>
     """,
     unsafe_allow_html=True
@@ -119,6 +232,7 @@ if 'registered' not in st.session_state:
     st.session_state['registered'] = False
 
 def generate_ai_summary(api_key, context_text, menu_name):
+    api_key = api_key or st.secrets.get("GEMINI_API_KEY", "")
     if not api_key:
         return "⚠️ กรุณาระบุ Gemini API Key ในแถบเมนูด้านซ้ายเพื่อเปิดใช้งานผู้ช่วย AI"
     try:
@@ -144,6 +258,46 @@ high_res_config = {
     'displaylogo': False,
     'toImageButtonOptions': {'format': 'png', 'filename': 'Epi_Chart_Export', 'height': 720, 'width': 1280, 'scale': 2}
 }
+
+
+def render_hero(title, subtitle, kicker="AI DATA ANALYTICS • ODPC8"):
+    st.markdown(f"""
+    <div class="hero">
+        <div class="hero-kicker">✨ {kicker}</div>
+        <div class="hero-title">{title}</div>
+        <p class="hero-subtitle">{subtitle}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+def section_header(icon, title, caption=None):
+    cap_html = f'<div class="section-caption">{caption}</div>' if caption else ''
+    st.markdown(f"""
+    <div class="section-title">
+        <div class="section-icon">{icon}</div>
+        <div>
+            <div class="section-heading">{title}</div>
+            {cap_html}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def metric_card(label, value, note=""):
+    st.markdown(f"""
+    <div class="metric-card">
+        <div class="metric-label">{label}</div>
+        <div class="metric-value">{value}</div>
+        <div class="metric-note">{note}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_data_overview(dataframe):
+    numeric_cols = dataframe.select_dtypes(include=[np.number]).shape[1]
+    missing_pct = dataframe.isna().mean().mean() * 100 if len(dataframe) else 0
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: metric_card("Rows", f"{len(dataframe):,}", "จำนวนระเบียน")
+    with c2: metric_card("Columns", f"{dataframe.shape[1]:,}", "จำนวนตัวแปร")
+    with c3: metric_card("Numeric", f"{numeric_cols:,}", "ตัวแปรเชิงปริมาณ")
+    with c4: metric_card("Missing", f"{missing_pct:.1f}%", "ค่า missing เฉลี่ย")
 
 # ==========================================
 # 3. HELPER FUNCTIONS
@@ -183,8 +337,15 @@ def find_col(df, possible_names):
 # ==========================================
 # 4. SIDEBAR NAVIGATION
 # ==========================================
-try: st.sidebar.image("odpc8_logo.png", use_container_width=True)
-except: st.sidebar.title("🏥 ODPC8 Udon Thani")
+try:
+    st.sidebar.image("odpc8_logo.png", use_container_width=True)
+except Exception:
+    st.sidebar.markdown("""
+    <div class="app-brand">
+        <div class="app-brand-title">🧬 Epi-Analytic Pro</div>
+        <div class="app-brand-subtitle">ODPC8 Udon Thani • AI Data Analytics</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
 
@@ -193,7 +354,7 @@ if not st.session_state['registered']:
     st.sidebar.warning("⚠️ โปรดลงทะเบียนเพื่อปลดล็อกเมนูวิเคราะห์")
 else:
     st.sidebar.subheader("🤖 ผู้ช่วย AI สรุปผล")
-    api_key_input = st.sidebar.text_input("Gemini API Key", type="password", help="รับ Key ได้ฟรีที่ Google AI Studio")
+    api_key_input = st.sidebar.text_input("Gemini API Key", type="password", help="แนะนำให้เก็บใน .streamlit/secrets.toml หรือ Streamlit Cloud Secrets")
     st.sidebar.markdown("---")
 
     menu = st.sidebar.radio(
@@ -268,7 +429,8 @@ if st.session_state['registered']:
 # ==========================================
 
 if menu == "📝 ลงทะเบียนใช้งาน" or menu == "📝 ข้อมูลการลงทะเบียน (แก้ไข)":
-    st.title("📝 ลงทะเบียนเข้าใช้งานระบบ")
+    render_hero("ลงทะเบียนเข้าใช้งานระบบ", "ระบุหน่วยงานและวัตถุประสงค์ เพื่อเข้าสู่เมนูวิเคราะห์ข้อมูลระบาดวิทยา")
+    section_header("📝", "ข้อมูลผู้ใช้งาน", "ใช้สำหรับแสดงบริบทของผู้วิเคราะห์ในระบบ")
     with st.form("registration"):
         u_agency = st.text_input("หน่วยงานต้นสังกัด (เช่น สสจ.อุดรธานี)")
         u_purpose = st.selectbox("วัตถุประสงค์", ["สอบสวนโรคภาคสนาม", "วิเคราะห์สถิติวิชาการ", "ซ้อมแผนฯ"])
@@ -281,12 +443,14 @@ if menu == "📝 ลงทะเบียนใช้งาน" or menu == "📝
 
 elif df is not None:
     total_n = len(df)
+    render_hero("Epi-Analytic Pro", "แพลตฟอร์มวิเคราะห์ข้อมูลระบาดวิทยาเชิงพรรณนา เชิงเวลา เชิงพื้นที่ และวิเคราะห์ปัจจัยเสี่ยง พร้อมผู้ช่วย AI สำหรับสรุปผล")
+    render_data_overview(df)
 
     # ------------------------------------------
     # 6.1 Attack Rate
     # ------------------------------------------
     if menu == "👥 ประชากรและอัตราป่วย (Attack Rate)":
-        st.title("👥 ประชากรและอัตราป่วย (Attack Rate)")
+        section_header("👥", "ประชากรและอัตราป่วย (Attack Rate)", "คำนวณอัตราป่วยรวม และอัตราป่วยจำเพาะตามเพศ/กลุ่มอายุ")
         sex_c = find_col(df, ['sex', 'gender', 'เพศ'])
         age_c = find_col(df, ['age', 'อายุ'])
         
@@ -341,7 +505,7 @@ elif df is not None:
     # 6.2 Descriptive Analysis
     # ------------------------------------------
     elif menu == "👤 พรรณนา (Descriptive)":
-        st.title("👤 ระบาดวิทยาเชิงพรรณนา")
+        section_header("👤", "ระบาดวิทยาเชิงพรรณนา", "สรุปการกระจายตามบุคคล อายุ เพศ อาการ และสถิติเชิงปริมาณ")
         st.info(f"📋 จำนวนผู้ป่วยทั้งหมด (n) = {total_n} ราย")
         
         c1, c2 = st.columns(2)
@@ -409,7 +573,7 @@ elif df is not None:
     # 6.3 Epidemic Curve 
     # ------------------------------------------
     elif menu == "📊 สร้าง Epi Curve (Time)":
-        st.title("📊 Interactive Epidemic Curve")
+        section_header("📊", "Interactive Epidemic Curve", "สร้างเส้นโค้งการระบาดแบบโต้ตอบ พร้อมกำหนดช่วงเวลาและกลุ่มสี")
         
         st.markdown(
             """
@@ -489,7 +653,7 @@ elif df is not None:
     # 6.4 Spot Map
     # ------------------------------------------
     elif menu == "🗺️ Spot Map (Place)":
-        st.title("🗺️ Spot Map - GIS Analytics")
+        section_header("🗺️", "Spot Map - GIS Analytics", "แสดงตำแหน่งผู้ป่วย พื้นที่เสี่ยง และรัศมีควบคุมโรคบนแผนที่")
         lat_c = next((c for c in df.columns if any(p in c.lower() for p in ['lat', 'latitude', 'ละติจูด'])), None)
         lon_c = next((c for c in df.columns if any(p in c.lower() for p in ['lon', 'longitude', 'ลองจิจูด'])), None)
         
@@ -574,7 +738,7 @@ elif df is not None:
     # 6.5 Bivariate Analysis
     # ------------------------------------------
     elif menu == "🔬 Bivariate Analysis (OR/RR)":
-        st.title("🔬 Bivariate Analysis & 2x2 Table")
+        section_header("🔬", "Bivariate Analysis & 2x2 Table", "คำนวณ OR/RR, 95% CI และ Mid-P exact สำหรับปัจจัยเสี่ยง")
 
         tab1, tab2 = st.tabs(["📁 วิเคราะห์จากไฟล์ข้อมูล", "🔢 กรอกข้อมูลเอง (Manual 2x2)"])
 
@@ -732,7 +896,7 @@ elif df is not None:
     # 6.6 Logistic Regression
     # ------------------------------------------
     elif menu == "🧬 Multiple Logistic Regression (AOR)":
-        st.title("🧬 Multiple Logistic Regression")
+        section_header("🧬", "Multiple Logistic Regression", "วิเคราะห์ Adjusted OR โดยควบคุมตัวแปรกวน")
         out_v = st.selectbox("Outcome", df.columns, key="mlr_out")
         exp_v = st.selectbox("ปัจจัยหลัก", [c for c in df.columns if c != out_v])
         adj_v = st.multiselect("ตัวแปรกวน", [c for c in df.columns if c not in [out_v, exp_v]])
