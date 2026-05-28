@@ -362,65 +362,69 @@ def _safe_datetime(year, month, day, hour=0, minute=0, second=0):
 def parse_epi_date_value(value):
     """Robust date parser for epidemiology datasets.
 
-    Supports Thai Buddhist Era dates (e.g. 7/6/2568), normal CE dates,
-    Excel serial dates, Thai numerals, and datetime objects from Excel.
+    Key rule:
+    - Numeric 1, 2, 3... must NOT be treated as dates because many Thai field
+      investigation sheets have a running-number column named ลำดับ.
+    - Buddhist Era years such as 2568 are converted to Common Era 2025.
     """
     if pd.isna(value):
         return pd.NaT
 
-    # Excel/openpyxl may return Python datetime with Buddhist Era year such as 2568.
-    if isinstance(value, (datetime, date)):
-        return _safe_datetime(value.year, value.month, value.day, getattr(value, 'hour', 0), getattr(value, 'minute', 0), getattr(value, 'second', 0))
+    # Excel/openpyxl can return Python datetime or pandas Timestamp.
+    if isinstance(value, (pd.Timestamp, datetime, date)):
+        return _safe_datetime(
+            value.year,
+            value.month,
+            value.day,
+            getattr(value, "hour", 0),
+            getattr(value, "minute", 0),
+            getattr(value, "second", 0),
+        )
 
-    # Numeric values can be Excel serial dates. Excel can also store BE-year dates
-    # as very large serials, e.g. 244142 -> 2568-06-07 -> 2025-06-07 after BE conversion.
+    # Numeric Excel serial dates:
+    # - CE dates are usually around 30,000-80,000.
+    # - BE serial dates can be >200,000, e.g. year 2568 in Excel-like serial.
+    # - Values such as 1,2,3... are almost always ID/running numbers, not onset dates.
     if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, bool):
         try:
             num = float(value)
-            if 1 <= num <= 400000:
+            if (30000 <= num <= 80000) or (200000 <= num <= 400000):
                 whole_days = math.floor(num)
                 frac_seconds = round((num - whole_days) * 86400)
                 dt = datetime(1899, 12, 30) + timedelta(days=whole_days, seconds=frac_seconds)
                 return _safe_datetime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
+            return pd.NaT
         except Exception:
-            pass
+            return pd.NaT
 
     raw = _thai_digit_to_arabic(value).strip()
-    if raw == '' or raw.lower() in {'nan', 'nat', 'none', 'null'}:
+    if raw == "" or raw.lower() in {"nan", "nat", "none", "null"}:
         return pd.NaT
-    raw = re.sub(r'\s*น\.?$', '', raw)
-    raw = raw.replace('พ.ศ.', '').replace('พศ.', '').replace('ค.ศ.', '').replace('คศ.', '')
-    raw = re.sub(r'\s+', ' ', raw).strip()
 
-    # Direct split formats: dd/mm/yyyy, yyyy-mm-dd, with optional time.
-    m = re.match(r'^(\d{1,4})[/-](\d{1,2})[/-](\d{1,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$', raw)
+    raw = re.sub(r"\s*น\.?$", "", raw)
+    raw = raw.replace("พ.ศ.", "").replace("พศ.", "").replace("ค.ศ.", "").replace("คศ.", "")
+    raw = re.sub(r"\s+", " ", raw).strip()
+
+    # Direct split formats:
+    # yyyy-mm-dd, yyyy/mm/dd, dd/mm/yyyy, dd-mm-yyyy, with optional hh:mm:ss.
+    m = re.match(r"^(\d{1,4})[/-](\d{1,2})[/-](\d{1,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$", raw)
     if m:
         a, b, c, hh, mm, ss = m.groups()
         a_i, b_i, c_i = int(a), int(b), int(c)
-        # yyyy-mm-dd or พ.ศ.-mm-dd
-        if a_i >= 1900 or a_i >= 2400:
+
+        # Year-first format, including Buddhist Era: 2568-06-07.
+        if a_i >= 1900:
             return _safe_datetime(a_i, b_i, c_i, hh, mm, ss)
-        # dd-mm-yyyy or dd/mm/พ.ศ.
+
+        # Day-first format: 7/6/2568 or 07/06/2025.
         if c_i < 100:
+            # Interpret 2-digit years in a public-health field dataset.
             c_i += 2500 if c_i < 80 else 2400
         return _safe_datetime(c_i, b_i, a_i, hh, mm, ss)
 
-    digits = re.sub(r'\D', '', raw)
-    if digits:
-        # Try pure numeric Excel serial first.
-        try:
-            num = float(digits)
-            if 1 <= num <= 400000:
-                whole_days = math.floor(num)
-                frac_seconds = round((num - whole_days) * 86400)
-                dt = datetime(1899, 12, 30) + timedelta(days=whole_days, seconds=frac_seconds)
-                parsed = _safe_datetime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
-                if not pd.isna(parsed):
-                    return parsed
-        except Exception:
-            pass
-
-        # Common compact formats: yyyymmdd, ddmmyyyy, yymmdd, ddmmyy.
+    # Compact formats only when there are no separators, e.g. 25680607 or 07062568.
+    if re.fullmatch(r"\d{6}|\d{8}", raw):
+        digits = raw
         candidates = []
         if len(digits) == 8:
             candidates.extend([
@@ -431,18 +435,21 @@ def parse_epi_date_value(value):
             yy1 = int(digits[0:2])
             yy2 = int(digits[4:6])
             candidates.extend([
-                (2000 + yy1 if yy1 < 80 else 1900 + yy1, digits[2:4], digits[4:6]),
-                (2000 + yy2 if yy2 < 80 else 1900 + yy2, digits[2:4], digits[0:2]),
+                (2500 + yy1 if yy1 < 80 else 2400 + yy1, digits[2:4], digits[4:6]),  # yymmdd, BE-like
+                (2500 + yy2 if yy2 < 80 else 2400 + yy2, digits[2:4], digits[0:2]),  # ddmmyy, BE-like
+                (2000 + yy1 if yy1 < 80 else 1900 + yy1, digits[2:4], digits[4:6]),  # yymmdd, CE-like
+                (2000 + yy2 if yy2 < 80 else 1900 + yy2, digits[2:4], digits[0:2]),  # ddmmyy, CE-like
             ])
         for y, mth, d in candidates:
             parsed = _safe_datetime(y, mth, d)
             if not pd.isna(parsed):
                 return parsed
 
-    # Last fallback for normal date strings in Common Era.
-    dt = pd.to_datetime(raw, dayfirst=True, errors='coerce')
+    # Last fallback for normal CE date strings. Do not use this for low integers.
+    dt = pd.to_datetime(raw, dayfirst=True, errors="coerce")
     if not pd.isna(dt):
         return _safe_datetime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
+
     return pd.NaT
 
 
@@ -695,7 +702,7 @@ elif df is not None:
     # ------------------------------------------
     elif menu == "📊 สร้าง Epi Curve (Time)":
         section_header("📊", "Interactive Epidemic Curve", "สร้างเส้นโค้งการระบาดแบบโต้ตอบ พร้อมกำหนดช่วงเวลาและกลุ่มสี")
-        
+
         st.markdown(
             """
             <div class="template-box" style="background: linear-gradient(135deg, #FFF0F5 0%, #ffffff 100%); border-left: 5px solid #E91E63; padding: 15px; margin-bottom: 25px;">
@@ -708,10 +715,20 @@ elif df is not None:
             """,
             unsafe_allow_html=True
         )
-        
-        date_col = st.sidebar.selectbox("คอลัมน์วันเริ่มป่วย", df.columns)
+
+        # Auto-select the likely onset-date column so the running-number column (ลำดับ)
+        # will not be selected accidentally.
+        likely_date_keywords = ["วันเริ่มป่วย", "onset", "date_onset", "date onset", "เริ่มป่วย"]
+        default_date_idx = 0
+        for i, col in enumerate(df.columns):
+            col_text = str(col).strip().lower()
+            if any(k.lower() in col_text for k in likely_date_keywords):
+                default_date_idx = i
+                break
+
+        date_col = st.sidebar.selectbox("คอลัมน์วันเริ่มป่วย", df.columns, index=default_date_idx)
         col_grp = st.sidebar.selectbox("ตัวแปรแยกกลุ่มสี:", ["<none>"] + list(df.columns))
-        
+
         custom_color = st.sidebar.color_picker("🎨 เลือกสีแผนภูมิแท่งหลัก", "#E91E63")
 
         unit_map = {"Hour": "h", "Day": "d", "Week": "W", "Month": "ME", "30 Min": "30min"}
@@ -722,48 +739,56 @@ elif df is not None:
         pad_before = st.sidebar.number_input(f"เพิ่มช่วงว่างก่อนหน้า ({bin_unit})", value=1)
         pad_after = st.sidebar.number_input(f"เพิ่มช่วงว่างข้างหลัง ({bin_unit})", value=1)
 
-        df[date_col] = parse_epi_date_series(df[date_col])
-        df_clean = df.dropna(subset=[date_col]).copy()
+        # Never overwrite the original selected column. Use a dedicated parsed column.
+        df_plot = df.copy()
+        original_date_col = f"{date_col} (ข้อมูลเดิม)"
+        df_plot[original_date_col] = df_plot[date_col]
+        df_plot["_onset_datetime_ce"] = parse_epi_date_series(df_plot[date_col])
+        df_clean = df_plot.dropna(subset=["_onset_datetime_ce"]).copy()
 
-        with st.expander("🔎 ตรวจสอบรูปแบบวันที่ที่ระบบอ่านได้", expanded=False):
-            preview_dates = df[[date_col]].copy()
-            preview_dates["วันที่หลังแปลงเป็น ค.ศ."] = df[date_col].dt.strftime("%d/%m/%Y %H:%M").fillna("อ่านวันที่ไม่ได้")
+        with st.expander("🔎 ตรวจสอบรูปแบบวันที่ที่ระบบอ่านได้", expanded=True):
+            preview_dates = df_plot[[original_date_col, "_onset_datetime_ce"]].copy()
+            preview_dates.columns = ["วันที่ในไฟล์เดิม", "วันที่หลังแปลงเป็น ค.ศ."]
+            preview_dates["วันที่หลังแปลงเป็น ค.ศ."] = preview_dates["วันที่หลังแปลงเป็น ค.ศ."].dt.strftime("%d/%m/%Y %H:%M").fillna("อ่านวันที่ไม่ได้")
             st.dataframe(preview_dates.head(20), use_container_width=True)
+            invalid_n = int(df_plot["_onset_datetime_ce"].isna().sum())
+            valid_n = int(df_plot["_onset_datetime_ce"].notna().sum())
+            st.caption(f"อ่านวันที่ได้ {valid_n} รายการ | อ่านวันที่ไม่ได้ {invalid_n} รายการ | คอลัมน์ที่เลือก: {date_col}")
 
         if not df_clean.empty:
-            min_dt, max_dt = df_clean[date_col].min(), df_clean[date_col].max()
-            
+            min_dt, max_dt = df_clean["_onset_datetime_ce"].min(), df_clean["_onset_datetime_ce"].max()
+
             if "h" in freq or "min" in freq:
                 start_range = (min_dt - pd.Timedelta(hours=pad_before)).floor('h')
                 end_range = (max_dt + pd.Timedelta(hours=pad_after)).ceil('h')
             else:
                 start_range = (min_dt - pd.to_timedelta(pad_before, unit='d')).floor('d')
                 end_range = (max_dt + pd.to_timedelta(pad_after, unit='d')).ceil('d')
-            
+
             full_range = pd.date_range(start=start_range, end=end_range, freq=freq)
 
             if col_grp == "<none>":
-                counts = df_clean.groupby(pd.Grouper(key=date_col, freq=freq)).size()
+                counts = df_clean.groupby(pd.Grouper(key="_onset_datetime_ce", freq=freq)).size()
                 chart_df = counts.reindex(full_range, fill_value=0).reset_index()
-                chart_df.columns = [date_col, 'Cases']
-                fig = px.bar(chart_df, x=date_col, y='Cases', text_auto=True, color_discrete_sequence=[custom_color])
+                chart_df.columns = ["Onset Date/Time", "Cases"]
+                fig = px.bar(chart_df, x="Onset Date/Time", y="Cases", text_auto=True, color_discrete_sequence=[custom_color])
             else:
-                counts = df_clean.groupby([pd.Grouper(key=date_col, freq=freq), col_grp]).size().unstack(fill_value=0)
-                chart_df = counts.reindex(full_range, fill_value=0).stack().reset_index(name='Cases')
-                chart_df.columns = [date_col, col_grp, 'Cases']
-                fig = px.bar(chart_df, x=date_col, y='Cases', color=col_grp, color_discrete_sequence=px.colors.sequential.RdPu[::-1])
+                counts = df_clean.groupby([pd.Grouper(key="_onset_datetime_ce", freq=freq), col_grp]).size().unstack(fill_value=0)
+                chart_df = counts.reindex(full_range, fill_value=0).stack().reset_index(name="Cases")
+                chart_df.columns = ["Onset Date/Time", col_grp, "Cases"]
+                fig = px.bar(chart_df, x="Onset Date/Time", y="Cases", color=col_grp, color_discrete_sequence=px.colors.sequential.RdPu[::-1])
 
             fig.update_layout(
                 font=dict(family="Sarabun", size=16, color="#4A4A4A"),
                 title="แผนภูมิแท่งแสดงการกระจายตัวของผู้ป่วยตามเวลาเริ่มป่วย (Epidemic Curve)",
                 bargap=0.01, 
-                xaxis=dict(type='date', tickformat='%d/%m %H:%M'),
+                xaxis=dict(type='date', tickformat='%d/%m/%Y %H:%M'),
                 xaxis_title="Onset Date/Time",
                 yaxis_title="Number of Cases",
                 hovermode="x unified"
             )
             fig.update_traces(marker_line_width=0.5, marker_line_color='white')
-            
+
             st.plotly_chart(fig, use_container_width=True, config=high_res_config)
             st.caption("📸 คลิกที่ไอคอนกล้องถ่ายรูปมุมขวาบนของแผนภูมิแท่ง เพื่อดาวน์โหลดรูปภาพความละเอียดสูง")
 
@@ -773,11 +798,13 @@ elif df is not None:
                     summary = generate_ai_summary(api_key_input, context, "Epidemic Curve")
                     st.markdown(f"<div class='ai-summary-box'><b>🤖 AI Summary:</b><br>{summary}</div>", unsafe_allow_html=True)
         else:
-            st.error("❌ ไม่สามารถวิเคราะห์ได้ เนื่องจากรูปแบบวันที่ในไฟล์ไม่ถูกต้อง")
+            st.error("❌ ไม่สามารถวิเคราะห์ได้ เนื่องจากรูปแบบวันที่ในไฟล์ไม่ถูกต้อง หรือเลือกคอลัมน์วันที่ไม่ถูกต้อง")
+            st.info("โปรดตรวจสอบว่าเลือกคอลัมน์วันเริ่มป่วย เช่น 'วันเริ่มป่วย' ไม่ใช่คอลัมน์ลำดับ/รหัสผู้ป่วย")
 
     # ------------------------------------------
     # 6.4 Spot Map
     # ------------------------------------------
+
     elif menu == "🗺️ Spot Map (Place)":
         section_header("🗺️", "Spot Map - GIS Analytics", "แสดงตำแหน่งผู้ป่วย พื้นที่เสี่ยง และรัศมีควบคุมโรคบนแผนที่")
         lat_c = next((c for c in df.columns if any(p in c.lower() for p in ['lat', 'latitude', 'ละติจูด'])), None)
