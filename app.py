@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
-from datetime import timedelta
+from datetime import timedelta, datetime, date
 import scipy.stats as stats
 from scipy.stats import hypergeom, chi2_contingency
 import plotly.express as px
@@ -333,6 +333,123 @@ def calculate_mid_p(a, b, c, d):
 def find_col(df, possible_names):
     return next((c for c in df.columns if any(p in c.lower() for p in possible_names)), None)
 
+
+def _thai_digit_to_arabic(text):
+    """Convert Thai numerals to Arabic numerals for date parsing."""
+    if text is None:
+        return text
+    return str(text).translate(str.maketrans('๐๑๒๓๔๕๖๗๘๙', '0123456789'))
+
+
+def _safe_datetime(year, month, day, hour=0, minute=0, second=0):
+    """Create datetime and convert Buddhist Era year to Common Era when needed."""
+    try:
+        year = int(year)
+        month = int(month)
+        day = int(day)
+        hour = int(hour or 0)
+        minute = int(minute or 0)
+        second = int(second or 0)
+        if year >= 2400:
+            year -= 543
+        if 1900 <= year <= 2200:
+            return datetime(year, month, day, hour, minute, second)
+    except Exception:
+        return pd.NaT
+    return pd.NaT
+
+
+def parse_epi_date_value(value):
+    """Robust date parser for epidemiology datasets.
+
+    Supports Thai Buddhist Era dates (e.g. 7/6/2568), normal CE dates,
+    Excel serial dates, Thai numerals, and datetime objects from Excel.
+    """
+    if pd.isna(value):
+        return pd.NaT
+
+    # Excel/openpyxl may return Python datetime with Buddhist Era year such as 2568.
+    if isinstance(value, (datetime, date)):
+        return _safe_datetime(value.year, value.month, value.day, getattr(value, 'hour', 0), getattr(value, 'minute', 0), getattr(value, 'second', 0))
+
+    # Numeric values can be Excel serial dates. Excel can also store BE-year dates
+    # as very large serials, e.g. 244142 -> 2568-06-07 -> 2025-06-07 after BE conversion.
+    if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(value, bool):
+        try:
+            num = float(value)
+            if 1 <= num <= 400000:
+                whole_days = math.floor(num)
+                frac_seconds = round((num - whole_days) * 86400)
+                dt = datetime(1899, 12, 30) + timedelta(days=whole_days, seconds=frac_seconds)
+                return _safe_datetime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
+        except Exception:
+            pass
+
+    raw = _thai_digit_to_arabic(value).strip()
+    if raw == '' or raw.lower() in {'nan', 'nat', 'none', 'null'}:
+        return pd.NaT
+    raw = re.sub(r'\s*น\.?$', '', raw)
+    raw = raw.replace('พ.ศ.', '').replace('พศ.', '').replace('ค.ศ.', '').replace('คศ.', '')
+    raw = re.sub(r'\s+', ' ', raw).strip()
+
+    # Direct split formats: dd/mm/yyyy, yyyy-mm-dd, with optional time.
+    m = re.match(r'^(\d{1,4})[/-](\d{1,2})[/-](\d{1,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$', raw)
+    if m:
+        a, b, c, hh, mm, ss = m.groups()
+        a_i, b_i, c_i = int(a), int(b), int(c)
+        # yyyy-mm-dd or พ.ศ.-mm-dd
+        if a_i >= 1900 or a_i >= 2400:
+            return _safe_datetime(a_i, b_i, c_i, hh, mm, ss)
+        # dd-mm-yyyy or dd/mm/พ.ศ.
+        if c_i < 100:
+            c_i += 2500 if c_i < 80 else 2400
+        return _safe_datetime(c_i, b_i, a_i, hh, mm, ss)
+
+    digits = re.sub(r'\D', '', raw)
+    if digits:
+        # Try pure numeric Excel serial first.
+        try:
+            num = float(digits)
+            if 1 <= num <= 400000:
+                whole_days = math.floor(num)
+                frac_seconds = round((num - whole_days) * 86400)
+                dt = datetime(1899, 12, 30) + timedelta(days=whole_days, seconds=frac_seconds)
+                parsed = _safe_datetime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
+                if not pd.isna(parsed):
+                    return parsed
+        except Exception:
+            pass
+
+        # Common compact formats: yyyymmdd, ddmmyyyy, yymmdd, ddmmyy.
+        candidates = []
+        if len(digits) == 8:
+            candidates.extend([
+                (digits[0:4], digits[4:6], digits[6:8]),  # yyyymmdd
+                (digits[4:8], digits[2:4], digits[0:2]),  # ddmmyyyy
+            ])
+        elif len(digits) == 6:
+            yy1 = int(digits[0:2])
+            yy2 = int(digits[4:6])
+            candidates.extend([
+                (2000 + yy1 if yy1 < 80 else 1900 + yy1, digits[2:4], digits[4:6]),
+                (2000 + yy2 if yy2 < 80 else 1900 + yy2, digits[2:4], digits[0:2]),
+            ])
+        for y, mth, d in candidates:
+            parsed = _safe_datetime(y, mth, d)
+            if not pd.isna(parsed):
+                return parsed
+
+    # Last fallback for normal date strings in Common Era.
+    dt = pd.to_datetime(raw, dayfirst=True, errors='coerce')
+    if not pd.isna(dt):
+        return _safe_datetime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
+    return pd.NaT
+
+
+def parse_epi_date_series(series):
+    """Parse a Streamlit-selected date column and keep valid values inside pandas bounds."""
+    return series.apply(parse_epi_date_value)
+
 # ==========================================
 # 4. SIDEBAR NAVIGATION
 # ==========================================
@@ -605,8 +722,13 @@ elif df is not None:
         pad_before = st.sidebar.number_input(f"เพิ่มช่วงว่างก่อนหน้า ({bin_unit})", value=1)
         pad_after = st.sidebar.number_input(f"เพิ่มช่วงว่างข้างหลัง ({bin_unit})", value=1)
 
-        df[date_col] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
+        df[date_col] = parse_epi_date_series(df[date_col])
         df_clean = df.dropna(subset=[date_col]).copy()
+
+        with st.expander("🔎 ตรวจสอบรูปแบบวันที่ที่ระบบอ่านได้", expanded=False):
+            preview_dates = df[[date_col]].copy()
+            preview_dates["วันที่หลังแปลงเป็น ค.ศ."] = df[date_col].dt.strftime("%d/%m/%Y %H:%M").fillna("อ่านวันที่ไม่ได้")
+            st.dataframe(preview_dates.head(20), use_container_width=True)
 
         if not df_clean.empty:
             min_dt, max_dt = df_clean[date_col].min(), df_clean[date_col].max()
