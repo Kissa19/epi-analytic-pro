@@ -457,6 +457,114 @@ def parse_epi_date_series(series):
     """Parse a Streamlit-selected date column and keep valid values inside pandas bounds."""
     return series.apply(parse_epi_date_value)
 
+
+
+def show_data_required_panel(menu_title="เมนูนี้ต้องใช้ไฟล์ข้อมูล"):
+    """Render a friendly empty state when a selected analysis requires uploaded data."""
+    st.markdown(
+        """
+        <div class="template-box" style="padding:24px; border-left:6px solid var(--primary); background:rgba(255,255,255,0.92);">
+            <div style="font-size:1.35rem !important; font-weight:800; color:var(--ink); margin-bottom:8px;">📂 พร้อมวิเคราะห์ทันทีเมื่อมีข้อมูล</div>
+            <div style="color:var(--muted); line-height:1.75;">
+                เมนูนี้ต้องใช้ข้อมูลรายบุคคลหรือข้อมูลพิกัดจากไฟล์ Excel/CSV หรือ Google Sheets ก่อน จึงจะคำนวณและแสดงผลได้
+                กรุณาเลือกแหล่งข้อมูลจากแถบด้านซ้าย แล้วอัปโหลดไฟล์หรือวางลิงก์ Google Sheets
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.info("1) เลือกแหล่งข้อมูล: Excel/CSV หรือ Google Sheets")
+    with c2:
+        st.info("2) ตรวจสอบชื่อคอลัมน์ให้ตรงกับตัวแปรที่ต้องการวิเคราะห์")
+    with c3:
+        st.info("3) กลับมาที่เมนูนี้ ระบบจะแสดงหน้าต่างวิเคราะห์ให้อัตโนมัติ")
+
+
+def render_manual_2x2_calculator(api_key_input):
+    """Manual 2x2 calculator that works without uploaded files."""
+    st.subheader("🔢 Manual 2x2 Table Calculator")
+    st.info("ใช้สำหรับคำนวณกรณีมีเพียงตัวเลขสรุป (Aggregated Data) โดยไม่ต้องอัปโหลดไฟล์")
+
+    with st.container(border=True):
+        manual_design = st.radio(
+            "รูปแบบการศึกษา (Study Design):",
+            ["Cohort Study (Relative Risk)", "Case-Control Study (Odds Ratio)"],
+            horizontal=True, key="man_design"
+        )
+
+        st.markdown("#### ตาราง 2x2")
+        st.caption("นิยาม: a = สัมผัสและป่วย, b = สัมผัสและไม่ป่วย, c = ไม่สัมผัสและป่วย, d = ไม่สัมผัสและไม่ป่วย")
+        c0, c1, c2 = st.columns([1.45, 1, 1])
+        with c0:
+            st.markdown("<div style='height:34px'></div>", unsafe_allow_html=True)
+            st.markdown("**Exposed / สัมผัสปัจจัย**")
+            st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+            st.markdown("**Non-exposed / ไม่สัมผัส**")
+        with c1:
+            st.markdown("<center><b>Sick / ป่วย</b></center>", unsafe_allow_html=True)
+            ma = st.number_input("a", min_value=0, value=0, step=1, help="Exposed + Sick")
+            mc = st.number_input("c", min_value=0, value=0, step=1, help="Non-exposed + Sick")
+        with c2:
+            st.markdown("<center><b>Not sick / ไม่ป่วย</b></center>", unsafe_allow_html=True)
+            mb = st.number_input("b", min_value=0, value=0, step=1, help="Exposed + Not sick")
+            md = st.number_input("d", min_value=0, value=0, step=1, help="Non-exposed + Not sick")
+
+        calc_col, reset_col = st.columns([2, 1])
+        run_calc = calc_col.button("📈 คำนวณผล 2x2 Table", type="primary", use_container_width=True)
+        if reset_col.button("🧹 ล้างผลลัพธ์", use_container_width=True):
+            st.session_state.pop('biv_man_res', None)
+            st.rerun()
+
+    if run_calc:
+        if (ma + mb + mc + md) > 0:
+            try:
+                if "Case-Control" in manual_design:
+                    res_label = "Odds Ratio (OR)"
+                    val = (ma * md) / (mb * mc) if (mb * mc) > 0 else 0
+                    se_ln = math.sqrt(1/ma + 1/mb + 1/mc + 1/md) if ma*mb*mc*md > 0 else 0
+                else:
+                    res_label = "Relative Risk (RR)"
+                    val = (ma / (ma + mb)) / (mc / (mc + md)) if (ma + mb) > 0 and (mc + md) > 0 else 0
+                    se_ln = math.sqrt((1/ma - 1/(ma+mb)) + (1/mc - 1/(mc+md))) if ma*mc > 0 else 0
+
+                lower = math.exp(math.log(val) - 1.96 * se_ln) if val > 0 else 0
+                upper = math.exp(math.log(val) + 1.96 * se_ln) if val > 0 else 0
+
+                obs = np.array([[ma, mb], [mc, md]])
+                chi2_uncorrected, p_uncor, _, _ = chi2_contingency(obs, correction=False)
+                chi2_yates, p_yates, _, _ = chi2_contingency(obs, correction=True)
+                mid_p_val = calculate_mid_p(ma, mb, mc, md)
+
+                st.markdown("---")
+                r1, r2, r3, r4 = st.columns(4)
+                r1.metric(res_label, f"{val:.2f}")
+                r2.metric("95% CI Lower", f"{lower:.3f}")
+                r3.metric("95% CI Upper", f"{upper:.3f}")
+                r4.metric("Mid-P exact", f"{max(mid_p_val, 0.0000001):.7f}")
+
+                with st.container(border=True):
+                    st.write(f"**Yates chi-square:** {chi2_yates:.3f}")
+                    st.write(f"**Mid-P exact (2-tail):** {max(mid_p_val, 0.0000001):.7f}")
+                    if mid_p_val < 0.05:
+                        st.success("✨ มีนัยสำคัญทางสถิติ (p < 0.05)")
+                    else:
+                        st.warning("ยังไม่พบนัยสำคัญทางสถิติที่ระดับ p < 0.05")
+
+                manual_res = f"Study Design: {manual_design}\n{res_label}: {val:.2f} (95% CI: {lower:.3f} - {upper:.3f})\nYates chi-square: {chi2_yates:.3f}\nMid-P exact: {max(mid_p_val, 0.0000001):.7f}"
+                st.session_state['biv_man_res'] = manual_res
+            except Exception as e:
+                st.error(f"⚠️ เกิดข้อผิดพลาดในการคำนวณ: {e}")
+        else:
+            st.warning("กรุณากรอกตัวเลขจำนวนในตาราง 2x2")
+
+    if 'biv_man_res' in st.session_state:
+        if st.button("✨ ให้ AI ช่วยสรุปผล", key="ai_biv_man"):
+            with st.spinner("AI กำลังวิเคราะห์และสรุปผล..."):
+                summary = generate_ai_summary(api_key_input, st.session_state['biv_man_res'], "Bivariate Analysis (Manual)")
+                st.markdown(f"<div class='ai-summary-box'><b>🤖 AI Summary:</b><br>{summary}</div>", unsafe_allow_html=True)
+
 # ==========================================
 # 4. SIDEBAR NAVIGATION
 # ==========================================
@@ -569,15 +677,25 @@ if menu == "📝 ลงทะเบียนใช้งาน" or menu == "📝
                 st.rerun()
             else: st.error("กรุณาระบุหน่วยงาน")
 
-elif df is not None:
-    total_n = len(df)
+elif st.session_state['registered']:
+    if df is not None:
+        total_n = len(df)
+    else:
+        total_n = 0
     render_hero("Epi-Analytic Pro", "แพลตฟอร์มวิเคราะห์ข้อมูลระบาดวิทยาเชิงพรรณนา เชิงเวลา เชิงพื้นที่ และวิเคราะห์ปัจจัยเสี่ยง พร้อมผู้ช่วย AI สำหรับสรุปผล")
-    render_data_overview(df)
+    if df is not None:
+        render_data_overview(df)
+    else:
+        st.caption("ยังไม่ได้เชื่อมต่อไฟล์ข้อมูล: เมนูที่ไม่ต้องใช้ไฟล์ เช่น Manual 2x2 สามารถใช้งานได้ทันที")
 
     # ------------------------------------------
     # 6.1 Attack Rate
     # ------------------------------------------
     if menu == "👥 ประชากรและอัตราป่วย (Attack Rate)":
+        if df is None:
+            section_header("👥", "ประชากรและอัตราป่วย (Attack Rate)", "คำนวณอัตราป่วยรวม และอัตราป่วยจำเพาะตามเพศ/กลุ่มอายุ")
+            show_data_required_panel()
+            st.stop()
         section_header("👥", "ประชากรและอัตราป่วย (Attack Rate)", "คำนวณอัตราป่วยรวม และอัตราป่วยจำเพาะตามเพศ/กลุ่มอายุ")
         sex_c = find_col(df, ['sex', 'gender', 'เพศ'])
         age_c = find_col(df, ['age', 'อายุ'])
@@ -633,6 +751,10 @@ elif df is not None:
     # 6.2 Descriptive Analysis
     # ------------------------------------------
     elif menu == "👤 พรรณนา (Descriptive)":
+        if df is None:
+            section_header("👤", "ระบาดวิทยาเชิงพรรณนา", "สรุปจำนวน ร้อยละ อาการ และค่าสถิติเชิงปริมาณ")
+            show_data_required_panel()
+            st.stop()
         section_header("👤", "ระบาดวิทยาเชิงพรรณนา", "สรุปการกระจายตามบุคคล อายุ เพศ อาการ และสถิติเชิงปริมาณ")
         st.info(f"📋 จำนวนผู้ป่วยทั้งหมด (n) = {total_n} ราย")
         
@@ -701,6 +823,10 @@ elif df is not None:
     # 6.3 Epidemic Curve 
     # ------------------------------------------
     elif menu == "📊 สร้าง Epi Curve (Time)":
+        if df is None:
+            section_header("📊", "Interactive Epidemic Curve", "สร้างเส้นโค้งการระบาดแบบโต้ตอบ พร้อมกำหนดช่วงเวลาและกลุ่มสี")
+            show_data_required_panel()
+            st.stop()
         section_header("📊", "Interactive Epidemic Curve", "สร้างเส้นโค้งการระบาดแบบโต้ตอบ พร้อมกำหนดช่วงเวลาและกลุ่มสี")
 
         st.markdown(
@@ -806,6 +932,10 @@ elif df is not None:
     # ------------------------------------------
 
     elif menu == "🗺️ Spot Map (Place)":
+        if df is None:
+            section_header("🗺️", "Spot Map - GIS Analytics", "แสดงตำแหน่งผู้ป่วยและรัศมีควบคุมโรคบนแผนที่")
+            show_data_required_panel()
+            st.stop()
         section_header("🗺️", "Spot Map - GIS Analytics", "แสดงตำแหน่งผู้ป่วย พื้นที่เสี่ยง และรัศมีควบคุมโรคบนแผนที่")
         lat_c = next((c for c in df.columns if any(p in c.lower() for p in ['lat', 'latitude', 'ละติจูด'])), None)
         lon_c = next((c for c in df.columns if any(p in c.lower() for p in ['lon', 'longitude', 'ลองจิจูด'])), None)
@@ -897,7 +1027,9 @@ elif df is not None:
 
         with tab1:
             st.subheader("📁 วิเคราะห์ปัจจัยเสี่ยงจากไฟล์ที่อัปโหลด")
-            if df is not None:
+            if df is None:
+                st.warning("เมนูวิเคราะห์จากไฟล์ต้องอัปโหลด Excel/CSV หรือเชื่อม Google Sheets ก่อน แต่สามารถใช้แท็บ Manual 2x2 ได้ทันที")
+            else:
                 out_v = st.selectbox("ตัวแปรตาม (Outcome)", df.columns, key="file_out")
                 design = st.radio("ประเภทการศึกษา", ["Case-control Study (OR)", "Cohort Study (RR)"], key="file_design")
                 exp_list = st.multiselect("เลือกปัจจัยเสี่ยง", [c for c in df.columns if c != out_v], key="file_exp")
@@ -962,93 +1094,16 @@ elif df is not None:
                         st.markdown(f"<div class='ai-summary-box'><b>🤖 AI Summary:</b><br>{summary}</div>", unsafe_allow_html=True)
 
         with tab2:
-            st.subheader("🔢 Manual 2x2 Table Calculator")
-            st.info("ใช้สำหรับคำนวณกรณีมีเพียงตัวเลขสรุป (Aggregated Data) โดยไม่ต้องอัปโหลดไฟล์")
-
-            manual_design = st.radio(
-                "รูปแบบการศึกษา (Study Design):",
-                ["Cohort Study (Relative Risk)", "Case-Control Study (Odds Ratio)"],
-                horizontal=True, key="man_design"
-            )
-
-            st.markdown("---")
-            c1, c2, c3 = st.columns([2, 1, 1])
-
-            with c1:
-                st.write("") 
-                st.write("")
-                st.markdown("**Exposed (สัมผัสปัจจัย)**")
-                st.write("")
-                st.markdown("**Non-Exposed (ไม่สัมผัส)**")
-
-            with c2:
-                st.markdown("<center><b>Sick (ป่วย)</b></center>", unsafe_allow_html=True)
-                ma = st.number_input("Cell a", min_value=0, value=0, step=1, label_visibility="collapsed")
-                mc = st.number_input("Cell c", min_value=0, value=0, step=1, label_visibility="collapsed")
-
-            with c3:
-                st.markdown("<center><b>Not Sick (ไม่ป่วย)</b></center>", unsafe_allow_html=True)
-                mb = st.number_input("Cell b", min_value=0, value=0, step=1, label_visibility="collapsed")
-                md = st.number_input("Cell d", min_value=0, value=0, step=1, label_visibility="collapsed")
-
-            if st.button("📈 คำนวณผล 2x2 Table"):
-                if (ma + mb + mc + md) > 0:
-                    try:
-                        if "Case-Control" in manual_design:
-                            res_label = "Odds Ratio (OR)"
-                            val = (ma * md) / (mb * mc) if (mb * mc) > 0 else 0
-                            se_ln = math.sqrt(1/ma + 1/mb + 1/mc + 1/md) if ma*mb*mc*md > 0 else 0
-                        else:
-                            res_label = "Relative Risk (RR)"
-                            val = (ma / (ma + mb)) / (mc / (mc + md)) if (ma + mb) > 0 and (mc + md) > 0 else 0
-                            se_ln = math.sqrt((1/ma - 1/(ma+mb)) + (1/mc - 1/(mc+md))) if ma*mc > 0 else 0
-
-                        lower = math.exp(math.log(val) - 1.96 * se_ln) if val > 0 else 0
-                        upper = math.exp(math.log(val) + 1.96 * se_ln) if val > 0 else 0
-
-                        obs = np.array([[ma, mb], [mc, md]])
-                        chi2_uncorrected, p_uncor, _, _ = chi2_contingency(obs, correction=False)
-                        chi2_yates, p_yates, _, _ = chi2_contingency(obs, correction=True)
-
-                        mid_p_val = calculate_mid_p(ma, mb, mc, md)
-
-                        st.markdown("---")
-                        col_res1, col_res2 = st.columns(2)
-
-                        with col_res1:
-                            st.metric(res_label, f"{val:.2f}")
-                            st.write(f"**95% CI (Taylor Series):**")
-                            st.write(f"👉 {lower:.3f} - {upper:.3f}")
-                            st.caption("ค่านี้จะตรงกับผลลัพธ์ใน OpenEpi/Epi Info")
-
-                        with col_res2:
-                            st.write("**Statistical Significance**")
-                            st.write(f"**Yates chi-square:** {chi2_yates:.3f}")
-                            st.write(f"**Mid-P exact (2-tail):** {max(mid_p_val, 0.0000001):.7f}")
-
-                            if mid_p_val < 0.05:
-                                st.success("✨ มีนัยสำคัญทางสถิติ (p < 0.05)")
-                            else:
-                                st.error("❌ ไม่มีนัยสำคัญทางสถิติ")
-
-                        manual_res = f"Study Design: {manual_design}\n{res_label}: {val:.2f} (95% CI: {lower:.3f} - {upper:.3f})\nYates chi-square: {chi2_yates:.3f}\nMid-P exact: {max(mid_p_val, 0.0000001):.7f}"
-                        st.session_state['biv_man_res'] = manual_res
-
-                    except Exception as e:
-                        st.error(f"⚠️ เกิดข้อผิดพลาดในการคำนวณ: {e}")
-                else:
-                    st.warning("กรุณากรอกตัวเลขจำนวนในตาราง 2x2")
-
-            if 'biv_man_res' in st.session_state:
-                if st.button("✨ ให้ AI ช่วยสรุปผล", key="ai_biv_man"):
-                    with st.spinner("AI กำลังวิเคราะห์และสรุปผล..."):
-                        summary = generate_ai_summary(api_key_input, st.session_state['biv_man_res'], "Bivariate Analysis (Manual)")
-                        st.markdown(f"<div class='ai-summary-box'><b>🤖 AI Summary:</b><br>{summary}</div>", unsafe_allow_html=True)
+            render_manual_2x2_calculator(api_key_input)
 
     # ------------------------------------------
     # 6.6 Logistic Regression
     # ------------------------------------------
     elif menu == "🧬 Multiple Logistic Regression (AOR)":
+        if df is None:
+            section_header("🧬", "Multiple Logistic Regression", "วิเคราะห์ Adjusted OR โดยควบคุมตัวแปรกวน")
+            show_data_required_panel()
+            st.stop()
         section_header("🧬", "Multiple Logistic Regression", "วิเคราะห์ Adjusted OR โดยควบคุมตัวแปรกวน")
         out_v = st.selectbox("Outcome", df.columns, key="mlr_out")
         exp_v = st.selectbox("ปัจจัยหลัก", [c for c in df.columns if c != out_v])
