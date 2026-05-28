@@ -298,6 +298,163 @@ def render_data_overview(dataframe):
     with c3: metric_card("Numeric", f"{numeric_cols:,}", "ตัวแปรเชิงปริมาณ")
     with c4: metric_card("Missing", f"{missing_pct:.1f}%", "ค่า missing เฉลี่ย")
 
+
+def _infer_likely_column(dataframe, keywords, min_parse_ratio=0.35):
+    """Find a likely column by name first, then by parse success rate."""
+    for col in dataframe.columns:
+        col_text = str(col).lower()
+        if any(str(k).lower() in col_text for k in keywords):
+            return col
+    return None
+
+
+def _infer_date_column(dataframe):
+    """Infer onset/date column for dashboard, avoiding running-number columns."""
+    name_hit = _infer_likely_column(dataframe, [
+        "วันเริ่มป่วย", "เริ่มป่วย", "onset", "date_onset", "date onset", "วันที่ป่วย", "วันที่"
+    ])
+    if name_hit is not None:
+        return name_hit
+
+    best_col, best_ratio = None, 0
+    for col in dataframe.columns:
+        # Skip obvious ID/running number fields.
+        col_text = str(col).lower()
+        if any(k in col_text for k in ["ลำดับ", "id", "no", "number", "เลขที่"]):
+            continue
+        sample = dataframe[col].dropna().head(60)
+        if sample.empty:
+            continue
+        parsed = sample.apply(parse_epi_date_value)
+        ratio = parsed.notna().mean()
+        if ratio > best_ratio:
+            best_col, best_ratio = col, ratio
+    return best_col if best_ratio >= 0.35 else None
+
+
+def render_dataset_dashboard(dataframe, api_key_input=""):
+    """Modern first-look dashboard after uploading data."""
+    section_header("🏠", "Dashboard สรุปข้อมูลหลังนำเข้า", "ภาพรวมคุณภาพข้อมูลและตัวแปรสำคัญก่อนเลือกวิเคราะห์เชิงลึก")
+    render_data_overview(dataframe)
+
+    total_n = len(dataframe)
+    numeric_cols = dataframe.select_dtypes(include=[np.number]).columns.tolist()
+    missing_by_col = (dataframe.isna().mean() * 100).sort_values(ascending=False)
+    complete_rows = int(dataframe.dropna(how="any").shape[0])
+
+    sex_c = find_col(dataframe, ['sex', 'gender', 'เพศ'])
+    age_c = find_col(dataframe, ['age', 'อายุ'])
+    date_c = _infer_date_column(dataframe)
+    lat_c = next((c for c in dataframe.columns if any(p in str(c).lower() for p in ['lat', 'latitude', 'ละติจูด'])), None)
+    lon_c = next((c for c in dataframe.columns if any(p in str(c).lower() for p in ['lon', 'longitude', 'ลองจิจูด'])), None)
+
+    parsed_dates = None
+    if date_c:
+        parsed_dates = parse_epi_date_series(dataframe[date_c])
+        valid_dates = parsed_dates.dropna()
+    else:
+        valid_dates = pd.Series(dtype="datetime64[ns]")
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        metric_card("Complete rows", f"{complete_rows:,}", "แถวที่ไม่มี missing เลย")
+    with c2:
+        if not valid_dates.empty:
+            metric_card("Onset range", f"{valid_dates.min():%d/%m/%Y} - {valid_dates.max():%d/%m/%Y}", f"จากคอลัมน์ {date_c}")
+        else:
+            metric_card("Onset range", "ยังไม่พบ", "ยังไม่พบคอลัมน์วันที่ที่อ่านได้")
+    with c3:
+        if age_c:
+            age_num = pd.to_numeric(dataframe[age_c], errors='coerce').dropna()
+            metric_card("Age median", f"{age_num.median():.1f}" if not age_num.empty else "N/A", f"จากคอลัมน์ {age_c}")
+        else:
+            metric_card("Age median", "ยังไม่พบ", "ยังไม่พบคอลัมน์อายุ")
+    with c4:
+        geo_ready = int(dataframe[[lat_c, lon_c]].dropna().shape[0]) if lat_c and lon_c else 0
+        metric_card("GIS ready", f"{geo_ready:,}", "ระเบียนที่มี Lat/Lon")
+
+    st.markdown("---")
+    left, right = st.columns([1.15, 0.85])
+
+    with left:
+        section_header("📈", "สัญญาณข้อมูลสำคัญ", "กราฟย่อสำหรับประเมินข้อมูลก่อนวิเคราะห์")
+        if not valid_dates.empty:
+            daily = valid_dates.dt.floor('D').value_counts().sort_index().reset_index()
+            daily.columns = ["วันที่เริ่มป่วย", "จำนวน"]
+            fig_daily = px.bar(daily, x="วันที่เริ่มป่วย", y="จำนวน", text_auto=True,
+                               title="Mini Epidemic Curve: จำนวนผู้ป่วยตามวันเริ่มป่วย",
+                               color_discrete_sequence=['#6556FF'])
+            fig_daily.update_layout(font=dict(family="Sarabun", size=15), xaxis_title="วันที่เริ่มป่วย", yaxis_title="จำนวนผู้ป่วย", bargap=0.05)
+            st.plotly_chart(fig_daily, use_container_width=True, config=high_res_config)
+        else:
+            st.info("ยังไม่พบคอลัมน์วันที่ที่ระบบอ่านได้ จึงยังไม่แสดง Mini Epi Curve")
+
+        if age_c:
+            age_num = pd.to_numeric(dataframe[age_c], errors='coerce')
+            age_grp = pd.cut(age_num, bins=[0,5,15,25,35,45,55,65,120], labels=['0-4','5-14','15-24','25-34','35-44','45-54','55-64','65+'], right=False)
+            age_df = age_grp.value_counts().sort_index().reset_index()
+            age_df.columns = ["กลุ่มอายุ", "จำนวน"]
+            fig_age = px.bar(age_df, x="กลุ่มอายุ", y="จำนวน", text_auto=True,
+                             title="จำนวนผู้ป่วยตามกลุ่มอายุ", color_discrete_sequence=['#00B4D8'])
+            fig_age.update_layout(font=dict(family="Sarabun", size=15), xaxis_title="กลุ่มอายุ", yaxis_title="จำนวน")
+            st.plotly_chart(fig_age, use_container_width=True, config=high_res_config)
+
+    with right:
+        section_header("🧭", "ตัวแปรที่ระบบตรวจพบ", "ช่วยเลือกเมนูวิเคราะห์ถัดไปได้เร็วขึ้น")
+        detected = pd.DataFrame([
+            {"รายการ": "คอลัมน์วันเริ่มป่วย", "ตรวจพบ": date_c or "-", "สถานะ": "พร้อม" if date_c and not valid_dates.empty else "ตรวจสอบ"},
+            {"รายการ": "คอลัมน์เพศ", "ตรวจพบ": sex_c or "-", "สถานะ": "พร้อม" if sex_c else "ตรวจสอบ"},
+            {"รายการ": "คอลัมน์อายุ", "ตรวจพบ": age_c or "-", "สถานะ": "พร้อม" if age_c else "ตรวจสอบ"},
+            {"รายการ": "คอลัมน์พิกัด Lat/Lon", "ตรวจพบ": f"{lat_c} / {lon_c}" if lat_c and lon_c else "-", "สถานะ": "พร้อม" if lat_c and lon_c else "ตรวจสอบ"},
+            {"รายการ": "ตัวแปรเชิงปริมาณ", "ตรวจพบ": f"{len(numeric_cols)} ตัวแปร", "สถานะ": "พร้อม" if numeric_cols else "ตรวจสอบ"},
+        ])
+        st.dataframe(detected, use_container_width=True, hide_index=True)
+
+        missing_top = missing_by_col.head(10).reset_index()
+        missing_top.columns = ["ตัวแปร", "% missing"]
+        fig_miss = px.bar(missing_top.sort_values("% missing"), x="% missing", y="ตัวแปร", orientation='h',
+                          title="Top missing data", color_discrete_sequence=['#EC4899'])
+        fig_miss.update_layout(font=dict(family="Sarabun", size=14), xaxis_title="% missing", yaxis_title="")
+        st.plotly_chart(fig_miss, use_container_width=True, config=high_res_config)
+
+        if sex_c:
+            sex_df = dataframe[sex_c].astype(str).str.strip().replace({'1':'ชาย','2':'หญิง','1.0':'ชาย','2.0':'หญิง'}).value_counts().reset_index()
+            sex_df.columns = ["เพศ", "จำนวน"]
+            fig_sex = px.pie(sex_df, names="เพศ", values="จำนวน", hole=0.55, title="สัดส่วนตามเพศ")
+            fig_sex.update_layout(font=dict(family="Sarabun", size=14))
+            st.plotly_chart(fig_sex, use_container_width=True, config=high_res_config)
+
+    st.markdown("---")
+    section_header("🚀", "เมนูวิเคราะห์แนะนำ", "เลือกเมนูจากแถบซ้ายตามเป้าหมายการวิเคราะห์")
+    q1, q2, q3, q4 = st.columns(4)
+    with q1:
+        st.info("📊 **Epi Curve**\n\nใช้เมื่อมีคอลัมน์วันเริ่มป่วย/เวลาเริ่มป่วย")
+    with q2:
+        st.info("👤 **Descriptive**\n\nสรุปเพศ อายุ อาการ และค่าสถิติเชิงปริมาณ")
+    with q3:
+        st.info("🗺️ **Spot Map**\n\nใช้เมื่อมีคอลัมน์ Latitude/Longitude")
+    with q4:
+        st.info("🔬 **Bivariate**\n\nวิเคราะห์ OR/RR จากไฟล์ หรือกรอก Manual 2x2 ได้ทันที")
+
+    with st.expander("🔎 ดูตัวอย่างข้อมูล 20 แถวแรก", expanded=False):
+        st.dataframe(dataframe.head(20), use_container_width=True)
+
+    if st.button("✨ ให้ AI ช่วยสรุปภาพรวมข้อมูล", key="ai_dashboard"):
+        context = f"""
+จำนวนระเบียน: {total_n}
+จำนวนตัวแปร: {dataframe.shape[1]}
+ค่า missing เฉลี่ย: {dataframe.isna().mean().mean()*100:.2f}%
+คอลัมน์วันเริ่มป่วยที่ตรวจพบ: {date_c}
+ช่วงวันเริ่มป่วย: {valid_dates.min() if not valid_dates.empty else 'ไม่พบ'} ถึง {valid_dates.max() if not valid_dates.empty else 'ไม่พบ'}
+คอลัมน์เพศ: {sex_c}
+คอลัมน์อายุ: {age_c}
+คอลัมน์พิกัด: {lat_c}, {lon_c}
+Top missing columns:\n{missing_top.to_string(index=False)}
+"""
+        with st.spinner("AI กำลังสรุปภาพรวมข้อมูล..."):
+            summary = generate_ai_summary(api_key_input, context, "Dashboard สรุปข้อมูลหลังนำเข้า")
+            st.markdown(f"<div class='ai-summary-box'><b>🤖 AI Summary:</b><br>{summary}</div>", unsafe_allow_html=True)
+
 # ==========================================
 # 3. HELPER FUNCTIONS
 # ==========================================
@@ -590,7 +747,8 @@ else:
 
     menu = st.sidebar.radio(
         "เลือกหัวข้อการวิเคราะห์", 
-        ["👥 ประชากรและอัตราป่วย (Attack Rate)",
+        ["🏠 Dashboard",
+         "👥 ประชากรและอัตราป่วย (Attack Rate)",
          "👤 พรรณนา (Descriptive)", 
          "📊 สร้าง Epi Curve (Time)", 
          "🗺️ Spot Map (Place)",
@@ -683,15 +841,26 @@ elif st.session_state['registered']:
     else:
         total_n = 0
     render_hero("Epi-Analytic Pro", "แพลตฟอร์มวิเคราะห์ข้อมูลระบาดวิทยาเชิงพรรณนา เชิงเวลา เชิงพื้นที่ และวิเคราะห์ปัจจัยเสี่ยง พร้อมผู้ช่วย AI สำหรับสรุปผล")
-    if df is not None:
+    if df is not None and menu != "🏠 Dashboard":
         render_data_overview(df)
-    else:
+    elif df is None:
         st.caption("ยังไม่ได้เชื่อมต่อไฟล์ข้อมูล: เมนูที่ไม่ต้องใช้ไฟล์ เช่น Manual 2x2 สามารถใช้งานได้ทันที")
+
+    # ------------------------------------------
+    # 6.0 Dashboard
+    # ------------------------------------------
+    if menu == "🏠 Dashboard":
+        if df is None:
+            section_header("🏠", "Dashboard สรุปข้อมูลหลังนำเข้า", "อัปโหลดไฟล์หรือวางลิงก์ Google Sheets เพื่อเปิด Dashboard สรุปข้อมูลอัตโนมัติ")
+            show_data_required_panel("Dashboard ต้องใช้ไฟล์ข้อมูล")
+            st.info("หมายเหตุ: เมนู Bivariate Analysis > Manual 2x2 ยังใช้งานได้ทันที แม้ยังไม่อัปโหลดไฟล์")
+            st.stop()
+        render_dataset_dashboard(df, api_key_input)
 
     # ------------------------------------------
     # 6.1 Attack Rate
     # ------------------------------------------
-    if menu == "👥 ประชากรและอัตราป่วย (Attack Rate)":
+    elif menu == "👥 ประชากรและอัตราป่วย (Attack Rate)":
         if df is None:
             section_header("👥", "ประชากรและอัตราป่วย (Attack Rate)", "คำนวณอัตราป่วยรวม และอัตราป่วยจำเพาะตามเพศ/กลุ่มอายุ")
             show_data_required_panel()
