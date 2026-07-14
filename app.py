@@ -293,6 +293,27 @@ def safe_export(dataframe):
     blocked.update(c for c in dataframe.columns if any(k in str(c).lower() for k in ['lat', 'lon', 'ละติจูด', 'ลองจิจูด']))
     return dataframe.drop(columns=list(blocked), errors='ignore')
 
+def tables_to_excel_bytes(tables):
+    """Create an in-memory Excel workbook containing aggregated tables only."""
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        for sheet_name, table in tables.items():
+            safe_export(table).to_excel(writer, sheet_name=str(sheet_name)[:31], index=False)
+    return buffer.getvalue()
+
+def frequency_table(series, variable_name, denominator=None, include_missing=True):
+    """Return n and percent for a categorical variable without row-level data."""
+    values = series.copy()
+    if include_missing:
+        values = values.astype("object").where(values.notna(), "ไม่ระบุ")
+    else:
+        values = values.dropna()
+    counts = values.astype(str).value_counts(dropna=False).rename_axis("กลุ่ม").reset_index(name="n")
+    denom = int(denominator if denominator is not None else counts["n"].sum())
+    counts["%"] = np.where(denom > 0, counts["n"] / denom * 100, 0)
+    counts.insert(0, "ตัวแปร", variable_name)
+    return counts
+
 def clear_analysis_state():
     preserve = {'session_nonce'}
     for key in list(st.session_state.keys()):
@@ -518,9 +539,9 @@ def render_dataset_dashboard(dataframe):
     with q1:
         st.info("📊 **Epi Curve**\n\nใช้เมื่อมีคอลัมน์วันเริ่มป่วย/เวลาเริ่มป่วย")
     with q2:
-        st.info("👤 **Descriptive**\n\nสรุปเพศ อายุ อาการ และค่าสถิติเชิงปริมาณ")
+        st.info("👤 **Person**\n\nสรุปเพศ อายุ อาการ และปัจจัยอื่น ๆ")
     with q3:
-        st.info("🗺️ **Spot Map**\n\nใช้เมื่อมีคอลัมน์ Latitude/Longitude")
+        st.info("🗺️ **Place**\n\nSpot Map และตารางจำแนกตามสถานที่")
     with q4:
         st.info("🔬 **Bivariate**\n\nวิเคราะห์ OR/RR จากไฟล์ หรือกรอก Manual 2x2 ได้ทันที")
 
@@ -831,9 +852,9 @@ menu = st.sidebar.radio(
     "เลือกหัวข้อการวิเคราะห์",
     ["🏠 Dashboard",
      "👥 ประชากรและอัตราป่วย (Attack Rate)",
-     "👤 พรรณนา (Descriptive)",
+     "👤 บุคคล (Person)",
      "📊 สร้าง Epi Curve (Time)",
-     "🗺️ Spot Map (Place)",
+     "🗺️ สถานที่ (Place)",
      "🔬 Bivariate Analysis (OR/RR)",
      "🧬 Multiple Logistic Regression (AOR)",
      "🧪 Validation & Gold Standard"],
@@ -887,7 +908,7 @@ if True:
     st.sidebar.markdown(f"""
     <div class="template-box">
         <p style="margin-bottom:8px; font-size:1rem; color:#666;">ดาวน์โหลดไฟล์สำหรับทดลองระบบ:</p>
-        <a class="template-link" href="https://docs.google.com/spreadsheets/d/1WIK5KTiZMhUd_rpHg_YVzZl9gE5eDeOj/edit?usp=sharing&ouid=105507702062786209701&rtpof=true&sd=true" target="_blank">📄 1. พรรณนา/Daily Curve/Spot Map</a>
+        <a class="template-link" href="https://docs.google.com/spreadsheets/d/1WIK5KTiZMhUd_rpHg_YVzZl9gE5eDeOj/edit?usp=sharing&ouid=105507702062786209701&rtpof=true&sd=true" target="_blank">📄 1. Person/Time/Place</a>
         <a class="template-link" href="https://docs.google.com/spreadsheets/d/1kZSskpErufY_9qTl-_1TZaVymGMnNikm/edit?usp=drive_link" target="_blank">🕒 2. Hourly Epidemic Curve</a>
         <a class="template-link" href="https://docs.google.com/spreadsheets/d/1TPJDOoIWCiZBtsnXDlhcHcN5IM27TBOK/edit?usp=drive_link" target="_blank">🔬 3. Case Control Analysis</a>
         <a class="template-link" href="https://docs.google.com/spreadsheets/d/1HR57-mVqo9TceAgF1tpzWvLQi662akzw/edit?usp=drive_link" target="_blank">📊 4. Cohort Study Analysis</a>
@@ -978,29 +999,40 @@ if True:
     # ------------------------------------------
     # 6.2 Descriptive Analysis
     # ------------------------------------------
-    elif menu == "👤 พรรณนา (Descriptive)":
+    elif menu == "👤 บุคคล (Person)":
         if df is None:
-            section_header("👤", "ระบาดวิทยาเชิงพรรณนา", "สรุปจำนวน ร้อยละ อาการ และค่าสถิติเชิงปริมาณ")
+            section_header("👤", "บุคคล (Person)", "สรุปเพศ กลุ่มอายุ อาการ และปัจจัยอื่น ๆ")
             show_data_required_panel()
             st.stop()
-        section_header("👤", "ระบาดวิทยาเชิงพรรณนา", "สรุปการกระจายตามบุคคล อายุ เพศ อาการ และสถิติเชิงปริมาณ")
+        section_header("👤", "บุคคล (Person)", "แสดงจำนวน ร้อยละ ตาราง และกราฟจำแนกตามลักษณะบุคคล")
         st.info(f"📋 จำนวนผู้ป่วยทั้งหมด (n) = {total_n} ราย")
-        
+
+        person_tables = {}
         c1, c2 = st.columns(2)
-        res_sex_str, res_age_str, s_df_str, numeric_stats_str = "", "", "", ""
         with c1:
             sex_col = st.selectbox("ตัวแปรเพศ", df.columns)
-            res_sex = df[sex_col].value_counts().reset_index()
-            res_sex.columns = ['เพศ', 'n']; res_sex['%'] = (res_sex['n']/total_n*100)
-            st.table(res_sex.style.format({'%': '{:.2f}'}))
-            res_sex_str = res_sex.to_string()
+            res_sex = frequency_table(df[sex_col], sex_col, total_n)
+            person_tables["เพศ"] = res_sex
+            st.dataframe(res_sex.style.format({'%': '{:.2f}'}), use_container_width=True, hide_index=True)
+            fig_sex = px.pie(res_sex, names="กลุ่ม", values="n", hole=0.4,
+                             title=f"สัดส่วนผู้ป่วยจำแนกตาม {sex_col}")
+            fig_sex.update_traces(textposition="inside", textinfo="label+percent")
+            st.plotly_chart(fig_sex, use_container_width=True, config=high_res_config)
         with c2:
             age_col = st.selectbox("ตัวแปรอายุ", df.columns)
-            df['age_grp'] = pd.cut(pd.to_numeric(df[age_col], errors='coerce'), bins=[0,5,15,25,35,45,55,65,120], labels=['0-4','5-14','15-24','25-34','35-44','45-54','55-64','65+'])
-            res_age = df['age_grp'].value_counts().sort_index().reset_index()
-            res_age.columns = ['อายุ', 'n']; res_age['%'] = (res_age['n']/total_n*100)
-            st.table(res_age.style.format({'%': '{:.2f}'}))
-            res_age_str = res_age.to_string()
+            age_labels = ['0-4','5-14','15-24','25-34','35-44','45-54','55-64','65+']
+            age_group = pd.cut(pd.to_numeric(df[age_col], errors='coerce'),
+                               bins=[0,5,15,25,35,45,55,65,np.inf], labels=age_labels, right=False)
+            age_counts = age_group.value_counts().reindex(age_labels, fill_value=0)
+            res_age = pd.DataFrame({"ตัวแปร": age_col, "กลุ่ม": age_labels, "n": age_counts.values})
+            res_age["%"] = np.where(total_n > 0, res_age["n"] / total_n * 100, 0)
+            person_tables["กลุ่มอายุ"] = res_age
+            st.dataframe(res_age.style.format({'%': '{:.2f}'}), use_container_width=True, hide_index=True)
+            fig_age = px.bar(res_age, x="กลุ่ม", y="n", text="n",
+                             title=f"จำนวนผู้ป่วยจำแนกตามกลุ่มอายุ ({age_col})",
+                             color_discrete_sequence=['#6556FF'])
+            fig_age.update_layout(xaxis_title="กลุ่มอายุ", yaxis_title="จำนวนผู้ป่วย")
+            st.plotly_chart(fig_age, use_container_width=True, config=high_res_config)
 
         # --- ฟีเจอร์ใหม่: คำนวณค่าสถิติข้อมูลเชิงปริมาณ (Mean, Median, SD, Min, Max) ---
         st.markdown("---")
@@ -1024,7 +1056,10 @@ if True:
             c_stat3.metric("ส่วนเบี่ยงเบนมาตรฐาน (SD)", f"{sd_val:.2f}")
             c_stat4.metric("พิสัย (Min - Max)", f"{min_val:.2f} - {max_val:.2f}")
             
-            numeric_stats_str = f"\nสถิติเชิงปริมาณ ({num_col}): ค่าเฉลี่ย={mean_val:.2f}, มัธยฐาน={median_val:.2f}, SD={sd_val:.2f}, พิสัย(ต่ำสุด-สูงสุด)={min_val:.2f}-{max_val:.2f}"
+            numeric_table = pd.DataFrame([{"ตัวแปร": num_col, "N valid": len(numeric_series),
+                                           "Mean": mean_val, "Median": median_val, "SD": sd_val,
+                                           "Min": min_val, "Max": max_val}])
+            person_tables["สถิติเชิงปริมาณ"] = numeric_table
         else:
             st.warning("⚠️ ข้อมูลที่เลือกไม่สามารถคำนวณค่าทางสถิติได้ (กรุณาเลือกคอลัมน์ที่เป็นตัวเลข)")
 
@@ -1032,14 +1067,51 @@ if True:
         st.subheader("อาการแสดง (1=มีอาการ)")
         symp_cols = st.multiselect("เลือกตัวแปรอาการ", df.columns)
         if symp_cols:
-            s_df = pd.DataFrame([{"อาการ": c, "%": (df[c]==1).sum()/total_n*100} for c in symp_cols]).sort_values("%", ascending=True)
-            s_df_str = s_df.to_string()
+            s_df = pd.DataFrame([{"ตัวแปร": "อาการ", "กลุ่ม": c, "n": (pd.to_numeric(df[c], errors='coerce')==1).sum(),
+                                  "%": (pd.to_numeric(df[c], errors='coerce')==1).sum()/total_n*100}
+                                 for c in symp_cols]).sort_values("%", ascending=True)
+            person_tables["อาการ"] = s_df
             
-            fig_s = px.bar(s_df, x="%", y="อาการ", orientation='h', text_auto='.1f', color_discrete_sequence=['#E91E63'])
+            fig_s = px.bar(s_df, x="%", y="กลุ่ม", orientation='h', text_auto='.1f', color_discrete_sequence=['#E91E63'])
             fig_s.update_layout(font=dict(family="Sarabun", size=16, color="#4A4A4A"), title="แผนภูมิแท่งแนวนอนแสดงร้อยละของอาการ")
             
             st.plotly_chart(fig_s, use_container_width=True, config=high_res_config)
             st.caption("📸 คลิกที่ไอคอนกล้องถ่ายรูปมุมขวาบนของแผนภูมิแท่ง เพื่อดาวน์โหลดรูปภาพความละเอียดสูง")
+
+        st.markdown("---")
+        st.subheader("🧩 ตัวแปรปัจจัยอื่น ๆ")
+        factor_cols = st.multiselect(
+            "เลือกตัวแปร เช่น อาหาร การวินิจฉัย ความรุนแรง อาชีพ หรือปัจจัยสัมผัส",
+            [c for c in df.columns if c not in {sex_col, age_col}],
+            key="person_other_factors"
+        )
+        for i, factor_col in enumerate(factor_cols):
+            factor_table = frequency_table(df[factor_col], factor_col, total_n)
+            person_tables[f"ปัจจัย_{i+1}"] = factor_table
+            st.markdown(f"#### {factor_col}")
+            fc1, fc2 = st.columns([1, 1.25])
+            with fc1:
+                st.dataframe(factor_table.style.format({'%': '{:.2f}'}), use_container_width=True, hide_index=True)
+            with fc2:
+                factor_fig = px.bar(factor_table, x="กลุ่ม", y="n", text="n",
+                                    title=f"จำนวนผู้ป่วยจำแนกตาม {factor_col}",
+                                    color_discrete_sequence=['#00B4D8'])
+                factor_fig.update_layout(xaxis_title=factor_col, yaxis_title="จำนวนผู้ป่วย")
+                st.plotly_chart(factor_fig, use_container_width=True, config=high_res_config)
+
+        if person_tables:
+            st.markdown("---")
+            st.subheader("📥 ส่งออกผลการวิเคราะห์แบบสรุป")
+            combined_person = pd.concat(person_tables.values(), ignore_index=True, sort=False)
+            ec1, ec2 = st.columns(2)
+            ec1.download_button("⬇️ ดาวน์โหลด Person Analysis (Excel)",
+                                tables_to_excel_bytes(person_tables),
+                                "person_analysis.xlsx",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True)
+            ec2.download_button("⬇️ ดาวน์โหลด Person Analysis (CSV)",
+                                combined_person.to_csv(index=False).encode("utf-8-sig"),
+                                "person_analysis.csv", "text/csv", use_container_width=True)
 
 
     # ------------------------------------------
@@ -1149,17 +1221,22 @@ if True:
     # 6.4 Spot Map
     # ------------------------------------------
 
-    elif menu == "🗺️ Spot Map (Place)":
+    elif menu == "🗺️ สถานที่ (Place)":
         if df is None:
-            section_header("🗺️", "Spot Map - GIS Analytics", "แสดงตำแหน่งผู้ป่วยและรัศมีควบคุมโรคบนแผนที่")
+            section_header("🗺️", "สถานที่ (Place)", "แสดง Spot Map และตารางจำแนกตามสถานที่")
             show_data_required_panel()
             st.stop()
-        section_header("🗺️", "Spot Map - GIS Analytics", "แสดงตำแหน่งผู้ป่วย พื้นที่เสี่ยง และรัศมีควบคุมโรคบนแผนที่")
+        section_header("🗺️", "สถานที่ (Place)", "แสดงตำแหน่งผู้ป่วยและการกระจายตามหมู่ ชั้นเรียน ห้อง หรือสถานที่อื่น")
         lat_c = next((c for c in df.columns if any(p in c.lower() for p in ['lat', 'latitude', 'ละติจูด'])), None)
         lon_c = next((c for c in df.columns if any(p in c.lower() for p in ['lon', 'longitude', 'ลองจิจูด'])), None)
         
         if lat_c and lon_c:
-            df_m = df.dropna(subset=[lat_c, lon_c]).copy()
+            df_m = df.copy()
+            df_m[lat_c] = pd.to_numeric(df_m[lat_c], errors="coerce")
+            df_m[lon_c] = pd.to_numeric(df_m[lon_c], errors="coerce")
+            df_m = df_m.dropna(subset=[lat_c, lon_c]).copy()
+
+        if lat_c and lon_c and not df_m.empty:
 
             st.sidebar.markdown("---")
             st.sidebar.subheader("⚙️ ตั้งค่าแผนที่")
@@ -1225,7 +1302,42 @@ if True:
             st.caption("💡 แนะนำให้ใช้ฟังก์ชัน Screen Capture (Print Screen) ของคอมพิวเตอร์ เพื่อบันทึกภาพแผนที่")
 
         else: 
-            st.warning("⚠️ ไม่พบคอลัมน์พิกัด (Lat/Lon) ในไฟล์ กรุณาตรวจสอบชื่อคอลัมน์")
+            st.info("ℹ️ ไม่พบพิกัด Lat/Lon หรือพิกัดไม่มีข้อมูล จึงข้าม Spot Map แต่ยังวิเคราะห์ตัวแปรสถานที่ด้านล่างได้")
+
+        st.markdown("---")
+        st.subheader("📍 ตารางวิเคราะห์ผู้ป่วยจำแนกตามสถานที่")
+        location_candidates = [c for c in df.columns if c not in {lat_c, lon_c} and c not in detect_pii_columns(df)]
+        location_cols = st.multiselect(
+            "เลือกตัวแปรสถานที่ เช่น หมู่บ้าน หมู่ ชั้นเรียน ห้อง โรงเรียน จุดรับประทานอาหาร หรือพื้นที่เกิดเหตุ",
+            location_candidates,
+            key="place_variables"
+        )
+        place_tables = {}
+        for i, location_col in enumerate(location_cols):
+            place_table = frequency_table(df[location_col], location_col, total_n)
+            place_tables[f"สถานที่_{i+1}"] = place_table
+            st.markdown(f"#### {location_col}")
+            pc1, pc2 = st.columns([1, 1.25])
+            with pc1:
+                st.dataframe(place_table.style.format({'%': '{:.2f}'}), use_container_width=True, hide_index=True)
+            with pc2:
+                place_fig = px.bar(place_table, x="กลุ่ม", y="n", text="n",
+                                   title=f"จำนวนผู้ป่วยจำแนกตาม {location_col}",
+                                   color_discrete_sequence=['#10B981'])
+                place_fig.update_layout(xaxis_title=location_col, yaxis_title="จำนวนผู้ป่วย")
+                st.plotly_chart(place_fig, use_container_width=True, config=high_res_config)
+
+        if place_tables:
+            combined_place = pd.concat(place_tables.values(), ignore_index=True, sort=False)
+            pcsv, pxlsx = st.columns(2)
+            pxlsx.download_button("⬇️ ดาวน์โหลด Place Analysis (Excel)",
+                                  tables_to_excel_bytes(place_tables),
+                                  "place_analysis.xlsx",
+                                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                  use_container_width=True)
+            pcsv.download_button("⬇️ ดาวน์โหลด Place Analysis (CSV)",
+                                 combined_place.to_csv(index=False).encode("utf-8-sig"),
+                                 "place_analysis.csv", "text/csv", use_container_width=True)
 
     # ------------------------------------------
     # 6.5 Bivariate Analysis
