@@ -17,7 +17,6 @@ import io
 import hashlib
 import platform
 import statsmodels
-from scipy.stats import ttest_rel
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 
 APP_NAME = "ระบบวิเคราะห์ข้อมูลระบาดวิทยาขั้นสูงแบบรวมศูนย์ (Epi-Analytic Pro)"
@@ -243,26 +242,13 @@ st.markdown(
 # ==========================================
 # 2. SESSION STATE & PRIVACY HELPERS
 # ==========================================
-if 'registered' not in st.session_state:
-    st.session_state['registered'] = False
 for key, default in {
     'deidentified_confirmed': False,
-    'audit_log': [],
     'research_results': {},
     'session_nonce': hashlib.sha256(str(datetime.now().timestamp()).encode()).hexdigest()[:12],
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
-
-def audit_event(action, detail=""):
-    """Session-only audit trail. Never include patient data, values, or filenames."""
-    st.session_state.audit_log.append({
-        "เวลา": datetime.now().isoformat(timespec="seconds"),
-        "รหัสอาสาสมัคร": st.session_state.get("participant_id", "ไม่ระบุ"),
-        "กิจกรรม": action,
-        "รายละเอียด": detail,
-        "session": st.session_state.session_nonce,
-    })
 
 def detect_pii_columns(dataframe):
     findings = []
@@ -308,14 +294,13 @@ def safe_export(dataframe):
     return dataframe.drop(columns=list(blocked), errors='ignore')
 
 def clear_analysis_state():
-    preserve = {'registered', 'participant_id', 'audit_log', 'session_nonce'}
+    preserve = {'session_nonce'}
     for key in list(st.session_state.keys()):
         if key not in preserve:
             del st.session_state[key]
     st.cache_data.clear()
     st.session_state['deidentified_confirmed'] = False
     st.session_state['research_results'] = {}
-    audit_event("ล้างข้อมูลจาก session")
 
 def icc_absolute_agreement(data):
     """ICC(A,1): two-way random effects, absolute agreement, single measurement."""
@@ -842,64 +827,52 @@ except Exception:
 
 st.sidebar.markdown("---")
 
-if not st.session_state['registered']:
-    menu = "📝 ลงทะเบียนใช้งาน"
-    st.sidebar.warning("⚠️ โปรดลงทะเบียนเพื่อปลดล็อกเมนูวิเคราะห์")
-else:
-    menu = st.sidebar.radio(
-        "เลือกหัวข้อการวิเคราะห์", 
-        ["🏠 Dashboard",
-         "👥 ประชากรและอัตราป่วย (Attack Rate)",
-         "👤 พรรณนา (Descriptive)", 
-         "📊 สร้าง Epi Curve (Time)", 
-         "🗺️ Spot Map (Place)",
-         "🔬 Bivariate Analysis (OR/RR)", 
-         "🧬 Multiple Logistic Regression (AOR)",
-         "🧪 Validation & Gold Standard",
-         "⏱️ Time Reduction",
-         "📋 แบบประเมินการวิจัย",
-         "🔎 Audit trail",
-         "📝 ข้อมูลการลงทะเบียน (แก้ไข)"],
-        key="main_menu_radio" 
-    )
+menu = st.sidebar.radio(
+    "เลือกหัวข้อการวิเคราะห์",
+    ["🏠 Dashboard",
+     "👥 ประชากรและอัตราป่วย (Attack Rate)",
+     "👤 พรรณนา (Descriptive)",
+     "📊 สร้าง Epi Curve (Time)",
+     "🗺️ Spot Map (Place)",
+     "🔬 Bivariate Analysis (OR/RR)",
+     "🧬 Multiple Logistic Regression (AOR)",
+     "🧪 Validation & Gold Standard"],
+    key="main_menu_radio"
+)
 
 # ==========================================
 # 5. DATA SOURCE & TEMPLATES
 # ==========================================
 df = None
-if st.session_state['registered']:
-    st.sidebar.divider()
-    st.sidebar.subheader("💾 แหล่งข้อมูล (Data Source)")
-    st.sidebar.warning("อนุญาตเฉพาะข้อมูลจำลองหรือข้อมูลที่ตัดตัวระบุบุคคลแล้ว ห้ามอัปโหลดชื่อ เลขบัตรประชาชน HN, AN เบอร์โทรศัพท์ ที่อยู่ หรือรหัสที่ย้อนกลับไปหาผู้ป่วยได้")
-    confirmed = st.sidebar.checkbox(
-        "ข้าพเจ้ายืนยันว่าข้อมูลถูก de-identify แล้ว",
-        key="deidentified_confirmed"
-    )
-    uploaded_file = st.sidebar.file_uploader(
-        "📂 เลือกไฟล์ Excel/CSV (ประมวลผลใน session)",
-        type=['xlsx', 'csv'],
-        disabled=not confirmed
-    )
-    if uploaded_file:
-        candidate_df = load_data(uploaded_file)
-        if candidate_df is not None:
-            safe, risky_columns = validate_deidentified(candidate_df)
-            if not safe:
-                st.sidebar.error("ปฏิเสธไฟล์: พบคอลัมน์/ค่าที่อาจระบุตัวบุคคล")
-                st.sidebar.code("\n".join(risky_columns))
-                audit_event("ปฏิเสธไฟล์จาก PII screening", f"พบ {len(risky_columns)} คอลัมน์เสี่ยง")
-            else:
-                df = candidate_df
-                audit_event("นำเข้าข้อมูลที่ผ่าน PII screening", f"{len(df)} แถว {df.shape[1]} คอลัมน์")
+st.sidebar.divider()
+st.sidebar.subheader("💾 แหล่งข้อมูล (Data Source)")
+st.sidebar.warning("อนุญาตเฉพาะข้อมูลจำลองหรือข้อมูลที่ตัดตัวระบุบุคคลแล้ว ห้ามอัปโหลดชื่อ เลขบัตรประชาชน HN, AN เบอร์โทรศัพท์ ที่อยู่ หรือรหัสที่ย้อนกลับไปหาผู้ป่วยได้")
+confirmed = st.sidebar.checkbox(
+    "ข้าพเจ้ายืนยันว่าข้อมูลถูก de-identify แล้ว",
+    key="deidentified_confirmed"
+)
+uploaded_file = st.sidebar.file_uploader(
+    "📂 เลือกไฟล์ Excel/CSV (ประมวลผลใน session)",
+    type=['xlsx', 'csv'],
+    disabled=not confirmed
+)
+if uploaded_file:
+    candidate_df = load_data(uploaded_file)
+    if candidate_df is not None:
+        safe, risky_columns = validate_deidentified(candidate_df)
+        if not safe:
+            st.sidebar.error("ปฏิเสธไฟล์: พบคอลัมน์/ค่าที่อาจระบุตัวบุคคล")
+            st.sidebar.code("\n".join(risky_columns))
+        else:
+            df = candidate_df
 
-    st.sidebar.markdown("---")
-    c_reset, c_clear = st.sidebar.columns(2)
-    if c_reset.button("🔄 เริ่มใหม่", use_container_width=True):
-        audit_event("เริ่มการวิเคราะห์ใหม่")
-        st.cache_data.clear(); st.rerun()
-    if c_clear.button("🧹 ล้าง session", use_container_width=True):
-        clear_analysis_state(); st.rerun()
-
+st.sidebar.markdown("---")
+c_reset, c_clear = st.sidebar.columns(2)
+if c_reset.button("🔄 เริ่มใหม่", use_container_width=True):
+    st.cache_data.clear(); st.rerun()
+if c_clear.button("🧹 ล้าง session", use_container_width=True):
+    clear_analysis_state(); st.rerun()
+if True:
     st.sidebar.markdown("---")
     st.sidebar.subheader("📖 คู่มือการใช้งาน (Manual)")
     st.sidebar.markdown(f"""
@@ -925,34 +898,7 @@ if st.session_state['registered']:
 # 6. MAIN CONTENT
 # ==========================================
 
-if menu == "📝 ลงทะเบียนใช้งาน" or menu == "📝 ข้อมูลการลงทะเบียน (แก้ไข)":
-    render_hero(APP_NAME, "ระบบวิเคราะห์ข้อมูลระบาดวิทยาสำหรับทีม SAT, SRRT และ JIT พัฒนาโดย สคร.8 อุดรธานี")
-    st.markdown("""
-    ### เครื่องมือวิเคราะห์การระบาดในระบบเดียว
-
-    สร้าง Epidemic Curve และ Spot Map คำนวณ Attack Rate, Odds Ratio (OR),
-    Relative Risk (RR), Mid-P Exact Test และ Multiple Logistic Regression (Adjusted OR)
-    พร้อมโมดูลตรวจสอบผลกับ Gold Standard ด้วย Bland–Altman และ ICC
-
-    ระบบใช้แนวทาง Privacy by Design ไม่เชื่อมต่อ Generative AI และปฏิเสธไฟล์ที่ตรวจพบ
-    ชื่อ เลขบัตรประชาชน HN/AN เบอร์โทรศัพท์ ที่อยู่ หรือรหัสที่ย้อนกลับไปหาผู้ป่วยได้
-    """)
-    st.caption(f"{APP_VERSION} • โครงการวิจัย HE69-085")
-    section_header("📝", "ข้อมูลผู้ใช้งาน", "ใช้สำหรับแสดงบริบทของผู้วิเคราะห์ในระบบ")
-    with st.form("registration"):
-        participant_id = st.text_input("รหัสอาสาสมัคร (ห้ามกรอกชื่อ)", placeholder="เช่น EPI-001")
-        u_agency = st.text_input("หน่วยงานต้นสังกัด (เช่น สสจ.อุดรธานี)")
-        u_purpose = st.selectbox("วัตถุประสงค์", ["สอบสวนโรคภาคสนาม", "วิเคราะห์สถิติวิชาการ", "ซ้อมแผนฯ"])
-        if st.form_submit_button("เริ่มใช้งาน"):
-            if u_agency and participant_id:
-                st.session_state['registered'] = True
-                st.session_state['participant_id'] = participant_id.strip()
-                audit_event("ลงทะเบียนเข้าใช้ระบบ")
-                st.success("ลงทะเบียนสำเร็จ!")
-                st.rerun()
-            else: st.error("กรุณาระบุรหัสอาสาสมัครและหน่วยงาน")
-
-elif st.session_state['registered']:
+if True:
     if df is not None:
         total_n = len(df)
     else:
@@ -1240,12 +1186,10 @@ elif st.session_state['registered']:
                 map_df = jitter_coordinates(df_m, lat_c, lon_c, jitter_meters,
                                             seed=int(st.session_state.session_nonce[:8], 16))
                 plot_lat, plot_lon = '_masked_lat', '_masked_lon'
-                audit_event("แสดง Spot Map", f"jitter สูงสุด {jitter_meters} เมตร")
             else:
                 map_df = df_m.copy()
                 plot_lat, plot_lon = lat_c, lon_c
                 st.warning("กำลังแสดงตำแหน่งจริงบนหน้าจอเฉพาะ session นี้ ระบบไม่จัดเก็บหรือส่งออกพิกัด แต่ควรใช้เฉพาะในสภาพแวดล้อมที่ควบคุมได้")
-                audit_event("แสดง Spot Map", "ตำแหน่งจริงเฉพาะ session")
 
             m = folium.Map(
                 location=[map_df[plot_lat].mean(), map_df[plot_lon].mean()], 
@@ -1362,7 +1306,6 @@ elif st.session_state['registered']:
                         }))
                         st.session_state['biv_file_res'] = res_df.to_string()
                         st.session_state.research_results['bivariate'] = res_df
-                        audit_event("วิเคราะห์ Bivariate", f"{len(results)} ปัจจัย")
                         export_df = safe_export(res_df)
                         st.download_button("⬇️ ดาวน์โหลดผลลัพธ์ที่ไม่ระบุตัวบุคคล (CSV)",
                                            export_df.to_csv(index=False).encode('utf-8-sig'),
@@ -1455,7 +1398,6 @@ elif st.session_state['registered']:
                 st.success("✅ คำนวณค่า Adjusted OR และ 95% CI สำเร็จ")
                 st.session_state['mlr_res'] = res_df.to_string()
                 st.session_state.research_results['logistic'] = res_df
-                audit_event("วิเคราะห์ Multiple Logistic Regression", f"N={n_after}; parameters={parameter_count}; converged={converged}")
                 st.code(formula, language="text")
                 st.caption(f"Python {platform.python_version()} • pandas {pd.__version__} • statsmodels {statsmodels.__version__}")
                 st.warning("ผลวิเคราะห์แสดงความสัมพันธ์ ไม่ได้ยืนยันความเป็นเหตุ–ผล")
@@ -1499,7 +1441,6 @@ elif st.session_state['registered']:
                 export = pd.concat([result, ba_df], axis=0, ignore_index=True)
                 st.download_button("⬇️ Export Bland–Altman และ ICC", export.to_csv(index=False).encode('utf-8-sig'),
                                    "validation_bland_altman_icc.csv", "text/csv")
-                audit_event("Validation เทียบ Gold Standard", f"N pairs={len(pair)}")
             else:
                 st.warning("ต้องมีคู่ข้อมูลตัวเลขอย่างน้อย 3 คู่")
 
@@ -1507,74 +1448,6 @@ elif st.session_state['registered']:
         st.download_button("⬇️ ชุดข้อมูลจำลอง 3 สถานการณ์", synthetic.to_csv(index=False).encode('utf-8-sig'),
                            "HE69-085_synthetic_scenarios.csv", "text/csv")
         st.caption("สถานการณ์: cohort สมดุล, case-control ที่มี confounding/missing และ small sample ที่มี zero cell")
-
-    elif menu == "⏱️ Time Reduction":
-        section_header("⏱️", "ประเมินการลดเวลาประมวลผล", "เปรียบเทียบวิธีเดิมกับ Epi-Analytic Pro แบบ paired")
-        c1, c2 = st.columns(2)
-        with c1:
-            old_minutes = st.number_input("เวลาวิธีเดิม (นาที)", min_value=0.0, step=0.5)
-        with c2:
-            system_minutes = st.number_input("เวลา Epi-Analytic Pro (นาที)", min_value=0.0, step=0.5)
-        task_label = st.text_input("รหัสโจทย์ทดสอบ", placeholder="เช่น TEST-01 (ห้ามใช้ชื่อผู้ป่วย)")
-        if st.button("➕ เพิ่มคู่เวลา"):
-            times = st.session_state.setdefault("time_pairs", [])
-            times.append({"รหัสอาสาสมัคร": st.session_state.get('participant_id'), "รหัสโจทย์": task_label,
-                          "วิธีเดิม (นาที)": old_minutes, "Epi-Analytic Pro (นาที)": system_minutes})
-            audit_event("บันทึกคู่เวลา", "ไม่บันทึกข้อมูลผู้ป่วย")
-        time_df = pd.DataFrame(st.session_state.get("time_pairs", []))
-        if not time_df.empty:
-            time_df["ลดลง (นาที)"] = time_df["วิธีเดิม (นาที)"] - time_df["Epi-Analytic Pro (นาที)"]
-            time_df["ลดลง (%)"] = np.where(time_df["วิธีเดิม (นาที)"] > 0,
-                                           time_df["ลดลง (นาที)"] / time_df["วิธีเดิม (นาที)"] * 100, np.nan)
-            st.dataframe(time_df, use_container_width=True)
-            if len(time_df) >= 2:
-                test = ttest_rel(time_df["วิธีเดิม (นาที)"], time_df["Epi-Analytic Pro (นาที)"])
-                st.metric("Paired t-test p-value", f"{test.pvalue:.4f}")
-            st.download_button("⬇️ Export ข้อมูลเวลา", time_df.to_csv(index=False).encode('utf-8-sig'),
-                               "time_reduction.csv", "text/csv")
-
-    elif menu == "📋 แบบประเมินการวิจัย":
-        section_header("📋", "ISO/IEC 25010, SUS และ TAM", "บันทึกเฉพาะรหัสอาสาสมัครและคะแนน ไม่เก็บข้อมูลผู้ป่วย")
-        participant = st.text_input("รหัสอาสาสมัคร", value=st.session_state.get('participant_id', ''), disabled=True)
-        with st.form("research_evaluation"):
-            st.subheader("System Usability Scale (SUS)")
-            sus_items = [
-                "ฉันคิดว่าฉันต้องการใช้ระบบนี้บ่อยครั้ง", "ฉันพบว่าระบบนี้ซับซ้อนเกินความจำเป็น",
-                "ฉันคิดว่าระบบนี้ใช้งานง่าย", "ฉันคิดว่าฉันต้องการความช่วยเหลือจากผู้เชี่ยวชาญเพื่อใช้ระบบนี้",
-                "ฉันพบว่าฟังก์ชันต่าง ๆ ในระบบทำงานเชื่อมโยงกันดี", "ฉันคิดว่าระบบนี้มีความไม่สอดคล้องกันมากเกินไป",
-                "ฉันคิดว่าคนส่วนใหญ่จะเรียนรู้การใช้ระบบนี้ได้อย่างรวดเร็ว", "ฉันพบว่าระบบนี้ยุ่งยากในการใช้งาน",
-                "ฉันรู้สึกมั่นใจในการใช้ระบบนี้", "ฉันต้องเรียนรู้หลายอย่างก่อนจึงจะใช้ระบบนี้ได้"
-            ]
-            sus = [st.slider(f"SUS{i+1}. {q}", 1, 5, 3, key=f"sus_{i}") for i, q in enumerate(sus_items)]
-            st.subheader("Technology Acceptance Model (TAM)")
-            tam_questions = ["ระบบช่วยให้วิเคราะห์ข้อมูลได้รวดเร็วขึ้น", "ระบบช่วยเพิ่มคุณภาพงาน",
-                             "ระบบใช้งานง่าย", "การเรียนรู้ระบบทำได้ง่าย", "ตั้งใจจะใช้ระบบในงานต่อไป"]
-            tam = [st.slider(f"TAM{i+1}. {q}", 1, 5, 3, key=f"tam_{i}") for i, q in enumerate(tam_questions)]
-            st.subheader("ISO/IEC 25010")
-            iso_dims = ["Functional suitability", "Performance efficiency", "Compatibility", "Usability",
-                        "Reliability", "Security", "Maintainability", "Portability"]
-            iso = [st.slider(dim, 1, 5, 3, key=f"iso_{i}") for i, dim in enumerate(iso_dims)]
-            submitted = st.form_submit_button("บันทึกคะแนนใน session")
-        if submitted:
-            sus_score = sum((v - 1) if i % 2 == 0 else (5 - v) for i, v in enumerate(sus)) * 2.5
-            eval_result = {"รหัสอาสาสมัคร": participant, "SUS score": sus_score,
-                           **{f"TAM{i+1}": v for i,v in enumerate(tam)},
-                           **{f"ISO_{dim}": v for dim,v in zip(iso_dims, iso)}}
-            st.session_state['evaluation_result'] = eval_result
-            audit_event("ทำแบบประเมินการวิจัย")
-            st.success(f"SUS = {sus_score:.1f}/100")
-        if st.session_state.get('evaluation_result'):
-            eval_df = pd.DataFrame([st.session_state.evaluation_result])
-            st.download_button("⬇️ ดาวน์โหลดแบบประเมิน (CSV)", eval_df.to_csv(index=False).encode('utf-8-sig'),
-                               "research_evaluation.csv", "text/csv")
-
-    elif menu == "🔎 Audit trail":
-        section_header("🔎", "Audit trail เฉพาะกิจกรรมวิจัย", "ไม่บันทึกชื่อไฟล์ ค่าข้อมูล หรือข้อมูลผู้ป่วย และอยู่เฉพาะ session")
-        audit_df = pd.DataFrame(st.session_state.audit_log)
-        st.dataframe(audit_df, use_container_width=True)
-        if not audit_df.empty:
-            st.download_button("⬇️ ดาวน์โหลด audit trail", audit_df.to_csv(index=False).encode('utf-8-sig'),
-                               "research_audit_trail.csv", "text/csv")
 
 # --- Footer ---
 st.markdown("---")
