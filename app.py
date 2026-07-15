@@ -585,24 +585,62 @@ def calculate_attack_rate(cases, population):
     return cases / population * 100
 
 def calculate_2x2(a, b, c, d, design="OR", correction=True):
+    """Calculate crude and, when needed, Haldane-Anscombe corrected 2x2 measures.
+
+    The crude estimate is never silently replaced by the corrected estimate.  This is
+    important for zero-cell tables: for example, a cohort RR with no events in the
+    unexposed group is infinite/undefined by the ordinary formula, while the +0.5
+    estimate is only a secondary sensitivity estimate.
+    """
     cells = np.asarray([a, b, c, d], dtype=float)
     if np.any(cells < 0):
         raise ValueError("จำนวนในตาราง 2x2 ต้องไม่ติดลบ")
-    corrected = bool(np.any(cells == 0) and correction)
-    aa, bb, cc, dd = cells + 0.5 if corrected else cells
-    if design.upper() == "OR":
-        estimate = (aa * dd) / (bb * cc)
-        se = math.sqrt(1/aa + 1/bb + 1/cc + 1/dd)
-    elif design.upper() == "RR":
-        estimate = (aa/(aa+bb)) / (cc/(cc+dd))
-        se = math.sqrt((1/aa - 1/(aa+bb)) + (1/cc - 1/(cc+dd)))
-    else:
+    a, b, c, d = cells
+    design = design.upper()
+    if design not in {"OR", "RR"}:
         raise ValueError("design ต้องเป็น OR หรือ RR")
+
+    def _measure_and_ci(xa, xb, xc, xd):
+        if design == "OR":
+            numerator, denominator = xa * xd, xb * xc
+            estimate = (numerator / denominator if denominator > 0
+                        else (math.inf if numerator > 0 else math.nan))
+            se = (math.sqrt(1/xa + 1/xb + 1/xc + 1/xd)
+                  if min(xa, xb, xc, xd) > 0 else math.nan)
+        else:
+            if xa + xb <= 0 or xc + xd <= 0:
+                return math.nan, math.nan, math.nan
+            risk_exposed = xa / (xa + xb)
+            risk_unexposed = xc / (xc + xd)
+            estimate = (risk_exposed / risk_unexposed if risk_unexposed > 0
+                        else (math.inf if risk_exposed > 0 else math.nan))
+            se = (math.sqrt((1/xa - 1/(xa+xb)) + (1/xc - 1/(xc+xd)))
+                  if xa > 0 and xc > 0 else math.nan)
+
+        if math.isfinite(estimate) and estimate > 0 and math.isfinite(se):
+            lower = math.exp(math.log(estimate) - 1.96 * se)
+            upper = math.exp(math.log(estimate) + 1.96 * se)
+        else:
+            lower = upper = math.nan
+        return estimate, lower, upper
+
+    estimate, lower, upper = _measure_and_ci(a, b, c, d)
+    corrected = bool(np.any(cells == 0) and correction)
+    corrected_estimate = corrected_lower = corrected_upper = math.nan
+    if corrected:
+        corrected_estimate, corrected_lower, corrected_upper = _measure_and_ci(
+            a + 0.5, b + 0.5, c + 0.5, d + 0.5
+        )
+
     return {"estimate": estimate,
-            "lower": math.exp(math.log(estimate) - 1.96 * se),
-            "upper": math.exp(math.log(estimate) + 1.96 * se),
+            "lower": lower,
+            "upper": upper,
             "mid_p": calculate_mid_p(int(a), int(b), int(c), int(d)),
-            "corrected": corrected}
+            "zero_cell": bool(np.any(cells == 0)),
+            "corrected": corrected,
+            "corrected_estimate": corrected_estimate,
+            "corrected_lower": corrected_lower,
+            "corrected_upper": corrected_upper}
 
 def find_col(df, possible_names):
     return next((c for c in df.columns if any(p in c.lower() for p in possible_names)), None)
@@ -796,15 +834,15 @@ def render_manual_2x2_calculator():
             try:
                 if "Case-Control" in manual_design:
                     res_label = "Odds Ratio (OR)"
-                    val = (ma * md) / (mb * mc) if (mb * mc) > 0 else 0
-                    se_ln = math.sqrt(1/ma + 1/mb + 1/mc + 1/md) if ma*mb*mc*md > 0 else 0
+                    design_code = "OR"
                 else:
                     res_label = "Relative Risk (RR)"
-                    val = (ma / (ma + mb)) / (mc / (mc + md)) if (ma + mb) > 0 and (mc + md) > 0 else 0
-                    se_ln = math.sqrt((1/ma - 1/(ma+mb)) + (1/mc - 1/(mc+md))) if ma*mc > 0 else 0
+                    design_code = "RR"
 
-                lower = math.exp(math.log(val) - 1.96 * se_ln) if val > 0 else 0
-                upper = math.exp(math.log(val) + 1.96 * se_ln) if val > 0 else 0
+                result_2x2 = calculate_2x2(ma, mb, mc, md, design_code)
+                val = result_2x2["estimate"]
+                lower = result_2x2["lower"]
+                upper = result_2x2["upper"]
 
                 obs = np.array([[ma, mb], [mc, md]])
                 chi2_uncorrected, p_uncor, _, _ = chi2_contingency(obs, correction=False)
@@ -813,12 +851,21 @@ def render_manual_2x2_calculator():
 
                 st.markdown("---")
                 r1, r2, r3, r4 = st.columns(4)
-                r1.metric(res_label, f"{val:.2f}")
-                r2.metric("95% CI Lower", f"{lower:.3f}")
-                r3.metric("95% CI Upper", f"{upper:.3f}")
+                r1.metric(res_label, "∞ / Undefined" if not math.isfinite(val) else f"{val:.2f}")
+                r2.metric("95% CI Lower", "ประมาณไม่ได้" if not math.isfinite(lower) else f"{lower:.3f}")
+                r3.metric("95% CI Upper", "ประมาณไม่ได้" if not math.isfinite(upper) else f"{upper:.3f}")
                 r4.metric("Mid-P exact", f"{max(mid_p_val, 0.0000001):.7f}")
 
                 with st.container(border=True):
+                    if result_2x2["zero_cell"]:
+                        st.warning(
+                            f"พบ zero cell: ค่า {design_code} ตามสูตรปกติอาจเป็น 0, ∞ หรือประมาณไม่ได้ "
+                            "ค่าด้านล่างเป็นผลประกอบหลัง Haldane-Anscombe correction (+0.5)"
+                        )
+                        st.write(
+                            f"**Corrected {design_code}:** {result_2x2['corrected_estimate']:.2f} "
+                            f"(95% CI {result_2x2['corrected_lower']:.3f}–{result_2x2['corrected_upper']:.3f})"
+                        )
                     st.write(f"**Yates chi-square:** {chi2_yates:.3f}")
                     st.write(f"**Mid-P exact (2-tail):** {max(mid_p_val, 0.0000001):.7f}")
                     if mid_p_val < 0.05:
@@ -826,7 +873,17 @@ def render_manual_2x2_calculator():
                     else:
                         st.warning("ยังไม่พบนัยสำคัญทางสถิติที่ระดับ p < 0.05")
 
-                manual_res = f"Study Design: {manual_design}\n{res_label}: {val:.2f} (95% CI: {lower:.3f} - {upper:.3f})\nYates chi-square: {chi2_yates:.3f}\nMid-P exact: {max(mid_p_val, 0.0000001):.7f}"
+                crude_text = "∞ / Undefined" if not math.isfinite(val) else f"{val:.4f}"
+                ci_text = ("ประมาณไม่ได้" if not (math.isfinite(lower) and math.isfinite(upper))
+                           else f"{lower:.4f} - {upper:.4f}")
+                correction_text = ""
+                if result_2x2["zero_cell"]:
+                    correction_text = (
+                        f"\nCorrected {design_code} (Haldane-Anscombe +0.5): "
+                        f"{result_2x2['corrected_estimate']:.4f} "
+                        f"(95% CI: {result_2x2['corrected_lower']:.4f} - {result_2x2['corrected_upper']:.4f})"
+                    )
+                manual_res = f"Study Design: {manual_design}\n{res_label}: {crude_text} (95% CI: {ci_text}){correction_text}\nYates chi-square: {chi2_yates:.3f}\nMid-P exact: {max(mid_p_val, 0.0000001):.7f}"
                 st.session_state['biv_man_res'] = manual_res
             except Exception as e:
                 st.error(f"⚠️ เกิดข้อผิดพลาดในการคำนวณ: {e}")
@@ -1378,21 +1435,21 @@ if True:
                             d = len(temp[(temp[exp_v]==0) & (temp[out_v]==0)])
 
                             try:
-                                zero_cell = any(v == 0 for v in [a, b, c, d])
-                                aa, bb, cc, dd = (a+.5, b+.5, c+.5, d+.5) if zero_cell else (a, b, c, d)
-                                if "Case-control" in design:
-                                    m_label = "OR"
-                                    measure = (aa * dd) / (bb * cc)
-                                    se_ln = math.sqrt(1/aa + 1/bb + 1/cc + 1/dd)
+                                m_label = "OR" if "Case-control" in design else "RR"
+                                result_2x2 = calculate_2x2(a, b, c, d, m_label)
+                                zero_cell = result_2x2["zero_cell"]
+                                measure = result_2x2["estimate"]
+                                ci_l = result_2x2["lower"]
+                                ci_u = result_2x2["upper"]
+                                mid_p_val = result_2x2["mid_p"]
+                                if zero_cell:
+                                    interpretation = (
+                                        f"พบ zero cell: ค่า {m_label} ตามสูตรปกติเป็น "
+                                        f"{'อนันต์/ประมาณไม่ได้' if not math.isfinite(measure) else 'ค่าขอบเขต'}; "
+                                        "แสดงค่าหลัง Haldane-Anscombe +0.5 เป็นผลประกอบ"
+                                    )
                                 else:
-                                    m_label = "RR"
-                                    measure = (aa / (aa + bb)) / (cc / (cc + dd))
-                                    se_ln = math.sqrt((1/aa - 1/(aa+bb)) + (1/cc - 1/(cc+dd)))
-
-                                ci_l = math.exp(math.log(measure) - 1.96 * se_ln) if measure > 0 else 0
-                                ci_u = math.exp(math.log(measure) + 1.96 * se_ln) if measure > 0 else 0
-
-                                mid_p_val = calculate_mid_p(a, b, c, d)
+                                    interpretation = "คำนวณจากข้อมูลดิบ ไม่ใช้ zero-cell correction"
 
                                 results.append({
                                     "ปัจจัย": exp_v, 
@@ -1402,18 +1459,32 @@ if True:
                                     m_label: measure, 
                                     "95% CI Lower": ci_l, 
                                     "95% CI Upper": ci_u, 
+                                    f"Corrected {m_label}": result_2x2["corrected_estimate"],
+                                    "Corrected 95% CI Lower": result_2x2["corrected_lower"],
+                                    "Corrected 95% CI Upper": result_2x2["corrected_upper"],
                                     "Mid-P (2-tail)": max(mid_p_val, 0),
-                                    "Zero-cell correction": "Haldane-Anscombe +0.5" if zero_cell else "ไม่ใช้"
+                                    "Zero-cell status": "พบ zero cell" if zero_cell else "ไม่พบ",
+                                    "Correction method": "Haldane-Anscombe +0.5" if zero_cell else "ไม่ใช้",
+                                    "คำแปลผล": interpretation
                                 })
                             except: pass
 
                     if results:
                         res_df = pd.DataFrame(results)
                         st.success(f"✅ ประมวลผลสำเร็จ (ใช้สูตร Taylor Series และ Mid-P ตามมาตรฐาน OpenEpi)")
+                        if (res_df["Zero-cell status"] == "พบ zero cell").any():
+                            st.warning(
+                                "พบตารางที่มี zero cell: ระบบคงค่า OR/RR ตามสูตรปกติเป็น 0, ∞ หรือประมาณไม่ได้ "
+                                "และแสดงค่า Haldane-Anscombe +0.5 แยกเป็นผลประกอบ ไม่ควรใช้ค่าหลัง correction "
+                                "แทนค่าหลักโดยไม่ระบุวิธี"
+                            )
                         st.dataframe(res_df.style.format({
                             m_label: "{:.2f}", 
                             "95% CI Lower": "{:.3f}", 
                             "95% CI Upper": "{:.3f}", 
+                            f"Corrected {m_label}": "{:.2f}",
+                            "Corrected 95% CI Lower": "{:.3f}",
+                            "Corrected 95% CI Upper": "{:.3f}",
                             "Mid-P (2-tail)": "{:.7f}"
                         }))
                         st.session_state['biv_file_res'] = res_df.to_string()
