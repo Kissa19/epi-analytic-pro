@@ -21,6 +21,12 @@ from statsmodels.stats.outliers_influence import variance_inflation_factor
 
 APP_NAME = "ระบบวิเคราะห์ข้อมูลระบาดวิทยาขั้นสูงแบบรวมศูนย์ (Epi-Analytic Pro)"
 APP_VERSION = "Research build HE69-085 v1.0"
+APP_URL = "https://epianalyticproodpc8.streamlit.app/"
+SEO_DESCRIPTION = (
+    "โปรแกรมวิเคราะห์ข้อมูลระบาดวิทยาออนไลน์สำหรับการสอบสวนโรคและควบคุมการระบาด "
+    "รองรับการวิเคราะห์ Person–Place–Time, epidemic curve, spot map, attack rate, "
+    "OR, RR, Mid-P exact และ multiple logistic regression (aOR)"
+)
 PII_COLUMN_PATTERNS = [
     r"(^|[_\s-])(ชื่อ|นามสกุล|name|surname|firstname|lastname)([_\s-]|$)",
     r"เลข.*บัตร|บัตร.*ประชาชน|citizen|national.?id|id.?card",
@@ -34,9 +40,10 @@ PII_COLUMN_PATTERNS = [
 # 1. CONFIGURATION & STYLING (MODERN SARABUN)
 # ==========================================
 st.set_page_config(
-    page_title="Epi-Analytic Pro | ระบบวิเคราะห์ข้อมูลระบาดวิทยาขั้นสูงแบบรวมศูนย์", 
+    page_title="Epi-Analytic Pro | โปรแกรมวิเคราะห์ข้อมูลระบาดวิทยาออนไลน์", 
     page_icon="🦠", 
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 st.markdown(
@@ -143,6 +150,12 @@ st.markdown(
         }
         .hero-title { color: #FFFFFF !important; font-size: clamp(2rem, 5vw, 3.5rem) !important; line-height: 1.05; font-weight: 800; margin: 0 0 10px 0; letter-spacing: -0.05em; }
         .hero-subtitle { color: rgba(255,255,255,0.78); max-width: 880px; font-size: 1.05rem !important; margin-bottom: 0; }
+        .seo-summary {
+            color: var(--muted);
+            line-height: 1.75;
+            margin: -0.25rem 0 1.15rem 0;
+            padding: 0 0.25rem;
+        }
 
         .section-title {
             display: flex;
@@ -372,10 +385,24 @@ def render_hero(title, subtitle, kicker="PRIVACY BY DESIGN • ODPC8"):
     st.markdown(f"""
     <div class="hero">
         <div class="hero-kicker">✨ {kicker}</div>
-        <div class="hero-title">{title}</div>
+        <h1 class="hero-title">{title}</h1>
         <p class="hero-subtitle">{subtitle}</p>
     </div>
     """, unsafe_allow_html=True)
+
+
+def render_seo_summary():
+    """Visible, people-first summary that also gives search engines page context."""
+    st.markdown(
+        f"""
+        <p class="seo-summary">
+            {SEO_DESCRIPTION} พัฒนาโดยกลุ่มระบาดวิทยาและตอบโต้ภาวะฉุกเฉินทางสาธารณสุข
+            สำนักงานป้องกันควบคุมโรคที่ 8 จังหวัดอุดรธานี กรมควบคุมโรค
+            โดยประมวลผลข้อมูลภายใน session และไม่เชื่อมต่อ Generative AI
+        </p>
+        """,
+        unsafe_allow_html=True
+    )
 
 def section_header(icon, title, caption=None):
     cap_html = f'<div class="section-caption">{caption}</div>' if caption else ''
@@ -981,7 +1008,11 @@ if True:
         total_n = len(df)
     else:
         total_n = 0
-    render_hero(APP_NAME, "เครื่องมือวิเคราะห์เชิงพรรณนา เวลา สถานที่ และปัจจัยเสี่ยง สำหรับทีม SAT, SRRT และ JIT")
+    render_hero(
+        APP_NAME,
+        "เครื่องมือวิเคราะห์การระบาดแบบ Person–Place–Time และปัจจัยเสี่ยง สำหรับทีม SAT, SRRT, JIT และ CDCU"
+    )
+    render_seo_summary()
     st.caption(f"{APP_VERSION} • ไม่มีการเชื่อมต่อ Generative AI • ประมวลผลข้อมูลใน session")
     if df is not None and menu != "🏠 Dashboard":
         render_data_overview(df)
