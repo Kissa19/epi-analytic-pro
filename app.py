@@ -20,7 +20,7 @@ import statsmodels
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 
 APP_NAME = "ระบบวิเคราะห์ข้อมูลระบาดวิทยาขั้นสูงแบบรวมศูนย์ (Epi-Analytic Pro)"
-APP_VERSION = "Research build HE69-085 v1.0"
+APP_VERSION = "Research build HE69-085 v1.1"
 APP_URL = "https://epianalyticproodpc8.streamlit.app/"
 SEO_DESCRIPTION = (
     "โปรแกรมวิเคราะห์ข้อมูลระบาดวิทยาออนไลน์สำหรับการสอบสวนโรคและควบคุมการระบาด "
@@ -596,15 +596,33 @@ def smart_map_variable(series):
         return pd.to_numeric(series, errors='coerce').map({1: 1, 2: 0, 1.0: 1, 2.0: 0})
     return series
 
-def calculate_mid_p(a, b, c, d):
+def calculate_mid_p_values(a, b, c, d):
+    """Return one- and two-tailed Mid-P exact values for a 2x2 table.
+
+    The one-tailed value follows the Epi Info display convention by using the
+    smaller observed tail and removing half of the probability of the observed
+    table. The two-tailed value is retained for the default non-directional
+    interpretation. Both tests condition on the fixed margins.
+    """
     n = a + b + c + d
-    if n == 0: return 1.0
+    if n == 0:
+        return {"one_tail": 1.0, "two_tail": 1.0}
     k, m = a + c, a + b
     p_obs = hypergeom.pmf(a, n, k, m)
     p_lower = hypergeom.cdf(a, n, k, m)
     p_upper = hypergeom.sf(a-1, n, k, m)
-    mid_p = 2 * (min(p_lower, p_upper) - 0.5 * p_obs)
-    return max(min(mid_p, 1.0), 0.0)
+    mid_p_one_tail = min(p_lower, p_upper) - 0.5 * p_obs
+    mid_p_one_tail = max(min(mid_p_one_tail, 1.0), 0.0)
+    mid_p_two_tail = max(min(2 * mid_p_one_tail, 1.0), 0.0)
+    return {
+        "one_tail": mid_p_one_tail,
+        "two_tail": mid_p_two_tail,
+    }
+
+
+def calculate_mid_p(a, b, c, d):
+    """Backward-compatible helper returning the two-tailed Mid-P value."""
+    return calculate_mid_p_values(a, b, c, d)["two_tail"]
 
 def calculate_attack_rate(cases, population):
     if population <= 0 or cases < 0 or cases > population:
@@ -659,10 +677,13 @@ def calculate_2x2(a, b, c, d, design="OR", correction=True):
             a + 0.5, b + 0.5, c + 0.5, d + 0.5
         )
 
+    mid_p_values = calculate_mid_p_values(int(a), int(b), int(c), int(d))
     return {"estimate": estimate,
             "lower": lower,
             "upper": upper,
-            "mid_p": calculate_mid_p(int(a), int(b), int(c), int(d)),
+            "mid_p": mid_p_values["two_tail"],
+            "mid_p_1_tail": mid_p_values["one_tail"],
+            "mid_p_2_tail": mid_p_values["two_tail"],
             "zero_cell": bool(np.any(cells == 0)),
             "corrected": corrected,
             "corrected_estimate": corrected_estimate,
@@ -874,14 +895,16 @@ def render_manual_2x2_calculator():
                 obs = np.array([[ma, mb], [mc, md]])
                 chi2_uncorrected, p_uncor, _, _ = chi2_contingency(obs, correction=False)
                 chi2_yates, p_yates, _, _ = chi2_contingency(obs, correction=True)
-                mid_p_val = calculate_mid_p(ma, mb, mc, md)
+                mid_p_1_tail = result_2x2["mid_p_1_tail"]
+                mid_p_2_tail = result_2x2["mid_p_2_tail"]
 
                 st.markdown("---")
-                r1, r2, r3, r4 = st.columns(4)
+                r1, r2, r3, r4, r5 = st.columns(5)
                 r1.metric(res_label, "∞ / Undefined" if not math.isfinite(val) else f"{val:.2f}")
                 r2.metric("95% CI Lower", "ประมาณไม่ได้" if not math.isfinite(lower) else f"{lower:.3f}")
                 r3.metric("95% CI Upper", "ประมาณไม่ได้" if not math.isfinite(upper) else f"{upper:.3f}")
-                r4.metric("Mid-P exact", f"{max(mid_p_val, 0.0000001):.7f}")
+                r4.metric("Mid-P 1-tail (Epi Info)", f"{mid_p_1_tail:.7f}")
+                r5.metric("Mid-P 2-tail", f"{mid_p_2_tail:.7f}")
 
                 with st.container(border=True):
                     if result_2x2["zero_cell"]:
@@ -894,8 +917,16 @@ def render_manual_2x2_calculator():
                             f"(95% CI {result_2x2['corrected_lower']:.3f}–{result_2x2['corrected_upper']:.3f})"
                         )
                     st.write(f"**Yates chi-square:** {chi2_yates:.3f}")
-                    st.write(f"**Mid-P exact (2-tail):** {max(mid_p_val, 0.0000001):.7f}")
-                    if mid_p_val < 0.05:
+                    st.write(
+                        f"**Mid-P exact (1-tail; Epi Info compatible):** "
+                        f"{mid_p_1_tail:.7f}"
+                    )
+                    st.write(f"**Mid-P exact (2-tail):** {mid_p_2_tail:.7f}")
+                    st.caption(
+                        "ใช้ 1-tail สำหรับตรวจเทียบกับ Epi Info; "
+                        "ใช้ 2-tail เป็นค่าเริ่มต้นเมื่อไม่ได้กำหนดทิศทางสมมติฐานล่วงหน้า"
+                    )
+                    if mid_p_2_tail < 0.05:
                         st.success("✨ มีนัยสำคัญทางสถิติ (p < 0.05)")
                     else:
                         st.warning("ยังไม่พบนัยสำคัญทางสถิติที่ระดับ p < 0.05")
@@ -910,7 +941,14 @@ def render_manual_2x2_calculator():
                         f"{result_2x2['corrected_estimate']:.4f} "
                         f"(95% CI: {result_2x2['corrected_lower']:.4f} - {result_2x2['corrected_upper']:.4f})"
                     )
-                manual_res = f"Study Design: {manual_design}\n{res_label}: {crude_text} (95% CI: {ci_text}){correction_text}\nYates chi-square: {chi2_yates:.3f}\nMid-P exact: {max(mid_p_val, 0.0000001):.7f}"
+                manual_res = (
+                    f"Study Design: {manual_design}\n"
+                    f"{res_label}: {crude_text} (95% CI: {ci_text})"
+                    f"{correction_text}\n"
+                    f"Yates chi-square: {chi2_yates:.3f}\n"
+                    f"Mid-P exact (1-tail; Epi Info compatible): {mid_p_1_tail:.7f}\n"
+                    f"Mid-P exact (2-tail): {mid_p_2_tail:.7f}"
+                )
                 st.session_state['biv_man_res'] = manual_res
             except Exception as e:
                 st.error(f"⚠️ เกิดข้อผิดพลาดในการคำนวณ: {e}")
@@ -1431,7 +1469,11 @@ if True:
     # 6.5 Bivariate Analysis
     # ------------------------------------------
     elif menu == "🔬 Bivariate Analysis (OR/RR)":
-        section_header("🔬", "Bivariate Analysis & 2x2 Table", "คำนวณ OR/RR, 95% CI และ Mid-P exact สำหรับปัจจัยเสี่ยง")
+        section_header(
+            "🔬",
+            "Bivariate Analysis & 2x2 Table",
+            "คำนวณ OR/RR, 95% CI, Mid-P 1-tail แบบ Epi Info และ Mid-P 2-tail",
+        )
 
         tab1, tab2 = st.tabs(["📁 วิเคราะห์จากไฟล์ข้อมูล", "🔢 กรอกข้อมูลเอง (Manual 2x2)"])
 
@@ -1472,7 +1514,8 @@ if True:
                                 measure = result_2x2["estimate"]
                                 ci_l = result_2x2["lower"]
                                 ci_u = result_2x2["upper"]
-                                mid_p_val = result_2x2["mid_p"]
+                                mid_p_1_tail = result_2x2["mid_p_1_tail"]
+                                mid_p_2_tail = result_2x2["mid_p_2_tail"]
                                 if zero_cell:
                                     interpretation = (
                                         f"พบ zero cell: ค่า {m_label} ตามสูตรปกติเป็น "
@@ -1493,7 +1536,8 @@ if True:
                                     f"Corrected {m_label}": result_2x2["corrected_estimate"],
                                     "Corrected 95% CI Lower": result_2x2["corrected_lower"],
                                     "Corrected 95% CI Upper": result_2x2["corrected_upper"],
-                                    "Mid-P (2-tail)": max(mid_p_val, 0),
+                                    "Mid-P (1-tail; Epi Info)": mid_p_1_tail,
+                                    "Mid-P (2-tail)": mid_p_2_tail,
                                     "Zero-cell status": "พบ zero cell" if zero_cell else "ไม่พบ",
                                     "Correction method": "Haldane-Anscombe +0.5" if zero_cell else "ไม่ใช้",
                                     "คำแปลผล": interpretation
@@ -1502,7 +1546,14 @@ if True:
 
                     if results:
                         res_df = pd.DataFrame(results)
-                        st.success(f"✅ ประมวลผลสำเร็จ (ใช้สูตร Taylor Series และ Mid-P ตามมาตรฐาน OpenEpi)")
+                        st.success(
+                            "✅ ประมวลผลสำเร็จ "
+                            "(Taylor Series CI, Mid-P 1-tail แบบ Epi Info และ Mid-P 2-tail)"
+                        )
+                        st.caption(
+                            "การตรวจเทียบกับ Epi Info ให้ใช้คอลัมน์ Mid-P (1-tail; Epi Info) "
+                            "ส่วนการแปลผลทั่วไปที่ไม่ได้กำหนดทิศทางล่วงหน้าให้ใช้ Mid-P (2-tail)"
+                        )
                         if (res_df["Zero-cell status"] == "พบ zero cell").any():
                             st.warning(
                                 "พบตารางที่มี zero cell: ระบบคงค่า OR/RR ตามสูตรปกติเป็น 0, ∞ หรือประมาณไม่ได้ "
@@ -1516,6 +1567,7 @@ if True:
                             f"Corrected {m_label}": "{:.2f}",
                             "Corrected 95% CI Lower": "{:.3f}",
                             "Corrected 95% CI Upper": "{:.3f}",
+                            "Mid-P (1-tail; Epi Info)": "{:.7f}",
                             "Mid-P (2-tail)": "{:.7f}"
                         }))
                         st.session_state['biv_file_res'] = res_df.to_string()
